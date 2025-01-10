@@ -37,10 +37,11 @@ async def main() -> None:
         actor_run_details = await Actor.call(
             'apify/website-content-crawler',
             get_crawler_actor_config(url, max_crawl_depth=max_crawl_depth),
+            # memory limit for the crawler actor so free tier can use this actor
             memory_mbytes=4096,
         )
         if actor_run_details is None:
-            raise ValueError('Failed to start the "apify/website-content-crawler" actor!')
+            raise RuntimeError('Failed to start the "apify/website-content-crawler" actor!')
 
         run_client = Actor.apify_client.run(actor_run_details.id)
         run_store = run_client.key_value_store()
