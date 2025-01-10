@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "llms.txt generator actor"
 authors = ["Jakub Kopecky <jakub.kopecky@apify.com>"]
 readme = "README.md"
+package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.12"
@@ -13,6 +14,7 @@ beautifulsoup4 = "^4.12.3"
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.8.6"
 mypy = "^1.14.1"
+types-beautifulsoup4 = "^4.12.0.20241020"
 
 [build-system]
 requires = ["poetry-core"]

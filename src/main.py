@@ -7,11 +7,15 @@ https://docs.apify.com/sdk/python
 # Apify SDK - A toolkit for building Apify Actors. Read more at:
 # https://docs.apify.com/sdk/python
 import logging
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 from apify import Actor
 
 from .helpers import get_crawler_actor_config, get_description_from_kvstore, is_description_suitable, render_llms_txt
+
+if TYPE_CHECKING:
+    from src.types import SectionDict
 
 
 async def main() -> None:
@@ -48,7 +52,7 @@ async def main() -> None:
         data = {'title': root_title, 'description': None, 'sections': []}
         # add all pages to index section for now
         # TODO: use path or LLM suggestions to group pages into sections # noqa: TD003
-        section = {'title': 'Index', 'links': []}
+        section: SectionDict = {'title': 'Index', 'links': []}
 
         async for item in run_dataset.iterate_items():
             item_url = item.get('url')

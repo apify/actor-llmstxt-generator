@@ -7,7 +7,6 @@ clean:
 
 install-dev:
 	poetry install --all-extras
-	poetry run pre-commit install
 
 lint:
 	poetry run ruff format --check $(DIRS_WITH_CODE)

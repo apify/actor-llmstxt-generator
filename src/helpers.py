@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 import bs4
 from bs4.element import NavigableString
@@ -11,6 +12,14 @@ from src.renderer import render
 
 if TYPE_CHECKING:
     from apify_client.clients import KeyValueStoreClientAsync
+
+
+def get_hostname_path_string_from_url(url: str) -> str:
+    """Extracts the hostname and path from the URL."""
+    parsed_url = urlparse(url)
+    if parsed_url.hostname is None or parsed_url.path is None:
+        return url
+    return f'{parsed_url.hostname}{parsed_url.path}'
 
 
 def is_description_suitable(description: str | None) -> bool:
