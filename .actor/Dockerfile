@@ -22,4 +22,10 @@ RUN echo "Python version:" \
 
 COPY src ./src
 
+# create non-root user
+RUN useradd -m apify && \
+    chown -R apify:apify /usr/src/app
+
+USER apify
+
 CMD ["python3", "-m", "src"]
