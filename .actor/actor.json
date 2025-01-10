@@ -1,0 +1,13 @@
+{
+  "actorSpecification": 1,
+  "name": "llmstxt-generator-actor",
+  "title": "Generate llms.txt for the given site",
+  "description": "Generates llms.txt for the given site",
+  "version": "0.0",
+  "buildTag": "latest",
+  "input": "./input_schema.json",
+  "storages": {
+    "dataset": "./dataset_schema.json"
+  },
+  "dockerfile": "./Dockerfile"
+}

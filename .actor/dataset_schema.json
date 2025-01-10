@@ -1,0 +1,20 @@
+{
+  "actorSpecification": 1,
+  "views": {
+    "overview": {
+      "title": "Overview",
+      "transformation": {
+        "fields": ["llms.txt"]
+      },
+      "display": {
+        "component": "table",
+        "properties": {
+          "llms.txt": {
+            "label": "llms.txt",
+            "format": "text"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "title": "Generate llms.txt for the given site",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "url": {
+      "title": "URL of the site",
+      "type": "string",
+      "description": "The URL of website you want to get the llm.txt generated for.",
+      "editor": "textfield",
+      "prefill": "https://docs.apify.com/"
+    },
+    "maxCrawlDepth": {
+      "title": "Max crawl depth",
+      "type": "integer",
+      "description": "The maximum depth of the crawl. Default is 1.",
+      "editor": "number",
+      "default": 1
+    }
+  },
+  "required": ["url"]
+}
