@@ -18,5 +18,5 @@
       "default": 1
     }
   },
-  "required": ["url"]
+  "required": ["startUrl"]
 }

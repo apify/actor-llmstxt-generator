@@ -13,6 +13,7 @@ from src.renderer import render
 if TYPE_CHECKING:
     from apify_client.clients import KeyValueStoreClientAsync
 
+logger = logging.getLogger('apify')
 
 def get_hostname_path_string_from_url(url: str) -> str:
     """Extracts the hostname and path from the URL."""
@@ -38,10 +39,10 @@ async def get_description_from_kvstore(kvstore: KeyValueStoreClientAsync, html_u
     """Extracts the description from the HTML content stored in the KV store."""
     store_id = html_url.split('records/')[-1]
     if not (record := await kvstore.get_record(store_id)):
-        logging.warning(f'Failed to get record with id "{store_id}"!')
+        logger.warning(f'Failed to get record with id "{store_id}"!')
         return None
     if not (html := record.get('value')) or not isinstance(html, str):
-        logging.warning(f'Invalid HTML content for record with id "{store_id}"!')
+        logger.warning(f'Invalid HTML content for record with id "{store_id}"!')
         return None
 
     return get_description_from_html(html)

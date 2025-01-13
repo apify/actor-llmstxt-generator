@@ -17,6 +17,7 @@ from .helpers import get_crawler_actor_config, get_description_from_kvstore, is_
 if TYPE_CHECKING:
     from src.types import SectionDict
 
+logger = logging.getLogger('apify')
 
 async def main() -> None:
     """Main entry point for the Apify Actor.
@@ -34,7 +35,7 @@ async def main() -> None:
         max_crawl_depth = int(actor_input.get('maxCrawlDepth', 1))
 
         # call apify/website-content-crawler actor to get the html content
-        logging.info(f'Starting the "apify/website-content-crawler" actor for URL: {url}')
+        logger.info(f'Starting the "apify/website-content-crawler" actor for URL: {url}')
         actor_run_details = await Actor.call(
             'apify/website-content-crawler',
             get_crawler_actor_config(url, max_crawl_depth=max_crawl_depth),
@@ -57,13 +58,13 @@ async def main() -> None:
 
         async for item in run_dataset.iterate_items():
             item_url = item.get('url')
-            logging.info(f'Processing page: {item_url}')
+            logger.info(f'Processing page: {item_url}')
             if item_url is None:
-                logging.warning('Missing "url" attribute in dataset item!')
+                logger.warning('Missing "url" attribute in dataset item!')
                 continue
             html_url = item.get('htmlUrl')
             if html_url is None:
-                logging.warning('Missing "htmlUrl" attribute in dataset item!')
+                logger.warning('Missing "htmlUrl" attribute in dataset item!')
                 continue
 
             is_root = item_url == url
@@ -93,7 +94,7 @@ async def main() -> None:
         # save into kv-store as a file to be able to download it
         store = await Actor.open_key_value_store()
         await store.set_value('llms.txt', output)
-        logging.info('Saved the "llms.txt" file into the key-value store!')
+        logger.info('Saved the "llms.txt" file into the key-value store!')
 
         await Actor.push_data({'llms.txt': output})
-        logging.info('Pushed the "llms.txt" file to the dataset!')
+        logger.info('Pushed the "llms.txt" file to the dataset!')
