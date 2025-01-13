@@ -36,21 +36,21 @@ By adding an **llms.txt** file to your website, you make it easy for AI systems 
 
 Our actor is designed to simplify and automate the creation of **llms.txt** files. Here are its key features:
 
-- **Deep Website Crawling**: Extracts content from multi-level websites using the powerful [Crawlee](https://crawlee.dev) library and the [Website Content Crawler](https://apify.com/apify/website-content-crawler) actor.
-- **Content Extraction**: Retrieves key metadata such as titles, descriptions, and URLs for seamless integration.
-- **File Generation**: Saves the output in the standardized **llms.txt** format.
-- **Downloadable Output**: The **llms.txt** file can be downloaded from the **Key-Value Store** in the Storage section of the actor run details.
-- **Resource Management**: Limits the crawler actor to 4 GB of memory to ensure compatibility with the free tier, which has an 8 GB limit. Note that this may slow down the crawling process.
+- **Deep website crawling**: Extracts content from multi-level websites using the powerful [Crawlee](https://crawlee.dev) library and the [Website Content Crawler](https://apify.com/apify/website-content-crawler) actor.
+- **Content extraction**: Retrieves key metadata such as titles, descriptions, and URLs for seamless integration.
+- **File generation**: Saves the output in the standardized **llms.txt** format.
+- **Downloadable output**: The **llms.txt** file can be downloaded from the **key-value store** in the storage section of the actor run details.
+- **Resource management**: Limits the crawler actor to 4 GB of memory to ensure compatibility with the free tier, which has an 8 GB limit. Note that this may slow down the crawling process.
 
 ---
 
-## 🚀 How It Works
+## 🚀 How it works
 
-1. **Input**: Provide the Start URL of the website to crawl.
+1. **Input**: Provide the start URL of the website to crawl.
 2. **Configuration**: Set the maximum crawl depth and other options (optional).
 3. **Output**: The actor generates a structured **llms.txt** file with extracted content, ready for AI applications.
 
-### Input Example
+### Input example
 
 ```json
 {
@@ -59,7 +59,7 @@ Our actor is designed to simplify and automate the creation of **llms.txt** file
 }
 ```
 
-### Output Example (llms.txt)
+### Output example (llms.txt)
 
 ```
 # docs.apify.com
@@ -80,16 +80,16 @@ Our actor is designed to simplify and automate the creation of **llms.txt** file
 
 ---
 
-## ✨ Why Use llms.txt generator?
+## ✨ Why use llms.txt generator?
 
-- **Save Time**: Automates the tedious process of extracting, formatting, and organizing web content.
-- **Boost AI Performance**: Provides clean, structured data for LLMs and AI-powered tools.
-- **Future-Proof**: Follows a standardized format that’s gaining adoption in the AI community.
-- **User-Friendly**: Easy integration into customer-facing products, allowing users to generate **llms.txt** files effortlessly.
+- **Save time**: Automates the tedious process of extracting, formatting, and organizing web content.
+- **Boost AI performance**: Provides clean, structured data for LLMs and AI-powered tools.
+- **Future-proof**: Follows a standardized format that’s gaining adoption in the AI community.
+- **User-friendly**: Easy integration into customer-facing products, allowing users to generate **llms.txt** files effortlessly.
 
 ---
 
-## 🔧 Technical Highlights
+## 🔧 Technical highlights
 
 - Built on the [Apify SDK](https://docs.apify.com/sdk/python), leveraging state-of-the-art web scraping tools.
 - Designed to handle JavaScript-heavy websites using headless browsers.
@@ -98,12 +98,12 @@ Our actor is designed to simplify and automate the creation of **llms.txt** file
 
 ---
 
-## 📖 Learn More
+## 📖 Learn more
 
-- [Apify Platform](https://apify.com)
-- [Apify SDK Documentation](https://docs.apify.com/sdk/python)
-- [Crawlee Library](https://crawlee.dev)
-- [llms.txt Proposal](https://example.com/llms-txt-proposal)
+- [Apify platform](https://apify.com)
+- [Apify SDK documentation](https://docs.apify.com/sdk/python)
+- [Crawlee library](https://crawlee.dev)
+- [llms.txt proposal](https://example.com/llms-txt-proposal)
 
 ---
 
