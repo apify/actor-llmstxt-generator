@@ -26,14 +26,15 @@ async def main() -> None:
     the field of web scraping significantly.
     """
     async with Actor:
-        actor_input = await Actor.get_input() or {'url': 'https://docs.apify.com/'}
-        url = actor_input.get('url')
+        actor_input = await Actor.get_input()
+        url = actor_input.get('startUrl')
         if url is None:
-            raise ValueError('Missing "url" attribute in input!')
+            raise ValueError('Missing "startUrl" attribute in input!')
 
         max_crawl_depth = int(actor_input.get('maxCrawlDepth', 1))
 
         # call apify/website-content-crawler actor to get the html content
+        logging.info(f'Starting the "apify/website-content-crawler" actor for URL: {url}')
         actor_run_details = await Actor.call(
             'apify/website-content-crawler',
             get_crawler_actor_config(url, max_crawl_depth=max_crawl_depth),
@@ -52,11 +53,11 @@ async def main() -> None:
 
         data = {'title': root_title, 'description': None, 'sections': []}
         # add all pages to index section for now
-        # TODO: use path or LLM suggestions to group pages into sections # noqa: TD003
         section: SectionDict = {'title': 'Index', 'links': []}
 
         async for item in run_dataset.iterate_items():
             item_url = item.get('url')
+            logging.info(f'Processing page: {item_url}')
             if item_url is None:
                 logging.warning('Missing "url" attribute in dataset item!')
                 continue
@@ -92,5 +93,7 @@ async def main() -> None:
         # save into kv-store as a file to be able to download it
         store = await Actor.open_key_value_store()
         await store.set_value('llms.txt', output)
+        logging.info('Saved the "llms.txt" file into the key-value store!')
 
         await Actor.push_data({'llms.txt': output})
+        logging.info('Pushed the "llms.txt" file to the dataset!')

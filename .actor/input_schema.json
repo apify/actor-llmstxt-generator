@@ -3,10 +3,10 @@
   "type": "object",
   "schemaVersion": 1,
   "properties": {
-    "url": {
-      "title": "URL of the site",
+    "startUrl": {
+      "title": "Start URL",
       "type": "string",
-      "description": "The URL of website you want to get the llm.txt generated for.",
+      "description": "The URL from which the crawler will start to generate the llms.txt file.",
       "editor": "textfield",
       "prefill": "https://docs.apify.com/"
     },
