@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger('apify')
 
+
 async def main() -> None:
     """Main entry point for the Apify Actor.
 

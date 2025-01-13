@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger('apify')
 
+
 def get_hostname_path_string_from_url(url: str) -> str:
     """Extracts the hostname and path from the URL."""
     parsed_url = urlparse(url)
