@@ -10,7 +10,7 @@ The **llms.txt** format is a markdown-based standard for providing AI-friendly c
 - **Links to additional resources** in markdown format.
 - **AI-focused** structure to help coders, researchers, and AI models easily access and use website content.
 
-Proposed example structure:
+Proposed structure:
 
 ```
 # Title
