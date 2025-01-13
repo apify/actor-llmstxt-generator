@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "apify-llmstxt-generator"
 version = "0.1.0"
-description = "llms.txt generator actor"
+description = "llms.txt generator"
 authors = ["Jakub Kopecky <jakub.kopecky@apify.com>"]
 readme = "README.md"
 package-mode = false
