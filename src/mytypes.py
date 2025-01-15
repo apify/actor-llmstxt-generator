@@ -16,3 +16,12 @@ class SectionDict(TypedDict):
 
     title: str
     links: list[LinkDict]
+
+
+class LLMSData(TypedDict):
+    """Dictionary representing the data structure of the `llms.txt` file."""
+
+    title: str
+    description: str | None
+    details: str | None
+    sections: list[SectionDict]

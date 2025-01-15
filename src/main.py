@@ -1,37 +1,28 @@
-"""This module defines the main entry point for the Apify Actor.
+"""This module defines the main entry point for the llsm.txt generator actor."""
 
-To build Apify Actors, utilize the Apify SDK toolkit, read more at the official documentation:
-https://docs.apify.com/sdk/python
-"""
-
-# Apify SDK - A toolkit for building Apify Actors. Read more at:
-# https://docs.apify.com/sdk/python
 import logging
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 from apify import Actor
 
-from .helpers import get_crawler_actor_config, get_description_from_kvstore, is_description_suitable, render_llms_txt
+from .helpers import get_crawler_actor_config, get_description_from_kvstore, is_description_suitable
+from .renderer import render_llms_txt
 
 if TYPE_CHECKING:
-    from src.types import SectionDict
+    from src.mytypes import LLMSData, SectionDict
 
 logger = logging.getLogger('apify')
 
 
 async def main() -> None:
-    """Main entry point for the Apify Actor.
-
-    This coroutine is executed using `asyncio.run()`, so it must remain an asynchronous function for proper execution.
-    Asynchronous execution is required for communication with Apify platform, and it also enhances performance in
-    the field of web scraping significantly.
-    """
+    """Main entry point for the llms.txt generator actor."""
     async with Actor:
         actor_input = await Actor.get_input()
         url = actor_input.get('startUrl')
         if url is None:
-            raise ValueError('Missing "startUrl" attribute in input!')
+            msg = 'Missing "startUrl" attribute in input!'
+            raise ValueError(msg)
 
         max_crawl_depth = int(actor_input.get('maxCrawlDepth', 1))
 
@@ -44,7 +35,8 @@ async def main() -> None:
             memory_mbytes=4096,
         )
         if actor_run_details is None:
-            raise RuntimeError('Failed to start the "apify/website-content-crawler" actor!')
+            msg = 'Failed to start the "apify/website-content-crawler" actor!'
+            raise RuntimeError(msg)
 
         run_client = Actor.apify_client.run(actor_run_details.id)
         run_store = run_client.key_value_store()
@@ -53,11 +45,13 @@ async def main() -> None:
         hostname = urlparse(url).hostname
         root_title = hostname
 
-        data = {'title': root_title, 'description': None, 'sections': []}
+        data: LLMSData = {'title': root_title, 'description': None, 'details': None, 'sections': []}
         # add all pages to index section for now
         section: SectionDict = {'title': 'Index', 'links': []}
 
+        is_dataset_empty = True
         async for item in run_dataset.iterate_items():
+            is_dataset_empty = False
             item_url = item.get('url')
             logger.info(f'Processing page: {item_url}')
             if item_url is None:
@@ -86,6 +80,13 @@ async def main() -> None:
                 description = None
 
             section['links'].append({'url': item_url, 'title': title, 'description': description})
+
+        if is_dataset_empty:
+            msg = (
+                'No pages were crawled successfully!'
+                'Please check the "apify/website-content-crawler" actor run for more details.'
+            )
+            raise RuntimeError(msg)
 
         if section['links']:
             data['sections'].append(section)

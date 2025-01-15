@@ -20,4 +20,4 @@ format:
 	poetry run ruff format $(DIRS_WITH_CODE)
 
 unit-test:
-	poetry run python -m unittest tests.tests
+	poetry run -C tests/ pytest

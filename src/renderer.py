@@ -1,4 +1,7 @@
-def render(data: dict) -> str:
+from src.mytypes import LLMSData
+
+
+def render_llms_txt(data: LLMSData) -> str:
     """Generates llms.txt file from the provided data.
 
     Example data:
@@ -27,20 +30,20 @@ def render(data: dict) -> str:
     - [Example](https://example.com): Example description
 
     """
-    result = f"# {data['title']}\n\n"
+    result = [f"# {data['title']}\n\n"]
 
     if data.get('description'):
-        result += f"> {data['description']}\n\n"
+        result.append(f"> {data['description']}\n\n")
 
     if data.get('details'):
-        result += f"{data['details']}\n\n"
+        result.append(f"{data['details']}\n\n")
 
     for section in data.get('sections', []):
-        result += f"## {section['title']}\n\n"
+        result.append(f"## {section['title']}\n\n")
         for link in section.get('links', []):
-            result += f"- [{link['title']}]({link['url']})"
+            link_str = f"- [{link['title']}]({link['url']})"
             if link.get('description'):
-                result += f": {link['description']}"
-            result += '\n'
+                link_str += f": {link['description']}"
+            result.append(f'{link_str}\n')
 
-    return result
+    return ''.join(result)

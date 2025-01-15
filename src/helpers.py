@@ -8,11 +8,12 @@ import bs4
 from bs4.element import NavigableString
 
 from src.crawler_config import CRAWLER_CONFIG
-from src.renderer import render
 
 if TYPE_CHECKING:
     from apify_client.clients import KeyValueStoreClientAsync
 
+# not using Actor.log because pytest then throws a warning
+# about non existent event loop
 logger = logging.getLogger('apify')
 
 
@@ -47,11 +48,6 @@ async def get_description_from_kvstore(kvstore: KeyValueStoreClientAsync, html_u
         return None
 
     return get_description_from_html(html)
-
-
-def render_llms_txt(data: dict) -> str:
-    """Renders the `llms.txt` file using the provided data."""
-    return render(data)
 
 
 def get_crawler_actor_config(url: str, max_crawl_depth: int = 1) -> dict:
