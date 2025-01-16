@@ -1,6 +1,6 @@
 # llms.txt generator 🚀📄
 
-The **llms.txt generator** is an Apify tool that helps you extract essential website content and generate an **llms.txt** file, making your content ready for AI-powered applications such as fine-tuning, indexing, and integrating large language models (LLMs) like GPT-4, ChatGPT, or LLaMA. This tool leverages the [Website Content Crawler](https://apify.com/apify/website-content-crawler) actor to perform deep crawls and extract text content from web pages, ensuring comprehensive data collection. The Website Content Crawler is particularly useful because it supports output in multiple formats, including markdown, which is used by the **llms.txt**.
+The **llms.txt generator** is an Apify Actor that helps you extract essential website content and generate an **llms.txt** file, making your content ready for AI-powered applications such as fine-tuning, indexing, and integrating large language models (LLMs) like GPT-4, ChatGPT, or LLaMA. This Actor leverages the [Website Content Crawler](https://apify.com/apify/website-content-crawler) actor to perform deep crawls and extract text content from web pages, ensuring comprehensive data collection. The Website Content Crawler is particularly useful because it supports output in multiple formats, including markdown, which is used by the **llms.txt**.
 
 ## 🌟 What is llms.txt?
 
@@ -34,13 +34,13 @@ By adding an **llms.txt** file to your website, you make it easy for AI systems 
 
 ## 🎯 Features of llms.txt generator
 
-Our actor is designed to simplify and automate the creation of **llms.txt** files. Here are its key features:
+Our Actor is designed to simplify and automate the creation of **llms.txt** files. Here are its key features:
 
-- **Deep website crawling**: Extracts content from multi-level websites using the powerful [Crawlee](https://crawlee.dev) library and the [Website Content Crawler](https://apify.com/apify/website-content-crawler) actor.
+- **Deep website crawling**: Extracts content from multi-level websites using the powerful [Crawlee](https://crawlee.dev) library and the [Website Content Crawler](https://apify.com/apify/website-content-crawler) Actor.
 - **Content extraction**: Retrieves key metadata such as titles, descriptions, and URLs for seamless integration.
 - **File generation**: Saves the output in the standardized **llms.txt** format.
-- **Downloadable output**: The **llms.txt** file can be downloaded from the **key-value store** in the storage section of the actor run details.
-- **Resource management**: Limits the crawler actor to 4 GB of memory to ensure compatibility with the free tier, which has an 8 GB limit. Note that this may slow down the crawling process.
+- **Downloadable output**: The **llms.txt** file can be downloaded from the **key-value store** in the storage section of the Actor run details.
+- **Resource management**: Limits the crawler Actor to 4 GB of memory to ensure compatibility with the free tier, which has an 8 GB limit. Note that this may slow down the crawling process.
 
 ---
 
@@ -48,7 +48,7 @@ Our actor is designed to simplify and automate the creation of **llms.txt** file
 
 1. **Input**: Provide the start URL of the website to crawl.
 2. **Configuration**: Set the maximum crawl depth and other options (optional).
-3. **Output**: The actor generates a structured **llms.txt** file with extracted content, ready for AI applications.
+3. **Output**: The Actor generates a structured **llms.txt** file with extracted content, ready for AI applications.
 
 ### Input example
 
@@ -103,7 +103,7 @@ Our actor is designed to simplify and automate the creation of **llms.txt** file
 - [Apify platform](https://apify.com)
 - [Apify SDK documentation](https://docs.apify.com/sdk/python)
 - [Crawlee library](https://crawlee.dev)
-- [llms.txt proposal](https://example.com/llms-txt-proposal)
+- [llms.txt proposal](https://llmstxt.org)
 
 ---
 
