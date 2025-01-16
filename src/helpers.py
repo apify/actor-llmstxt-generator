@@ -8,10 +8,13 @@ import bs4
 from bs4.element import NavigableString
 
 from src.crawler_config import CRAWLER_CONFIG
-from src.renderer import render
 
 if TYPE_CHECKING:
     from apify_client.clients import KeyValueStoreClientAsync
+
+# not using Actor.log because pytest then throws a warning
+# about non existent event loop
+logger = logging.getLogger('apify')
 
 
 def get_hostname_path_string_from_url(url: str) -> str:
@@ -37,21 +40,14 @@ def is_description_suitable(description: str | None) -> bool:
 async def get_description_from_kvstore(kvstore: KeyValueStoreClientAsync, html_url: str) -> str | None:
     """Extracts the description from the HTML content stored in the KV store."""
     store_id = html_url.split('records/')[-1]
-    record = await kvstore.get_record(store_id)
-    if record is None:
-        logging.warning(f'Failed to get record with id "{store_id}"!')
+    if not (record := await kvstore.get_record(store_id)):
+        logger.warning(f'Failed to get record with id "{store_id}"!')
         return None
-    html = record.get('value')
-    if html is None or not isinstance(html, str):
-        logging.warning(f'Invalid HTML content for record with id "{store_id}"!')
+    if not (html := record.get('value')) or not isinstance(html, str):
+        logger.warning(f'Invalid HTML content for record with id "{store_id}"!')
         return None
 
     return get_description_from_html(html)
-
-
-def render_llms_txt(data: dict) -> str:
-    """Renders the `llms.txt` file using the provided data."""
-    return render(data)
 
 
 def get_crawler_actor_config(url: str, max_crawl_depth: int = 1) -> dict:

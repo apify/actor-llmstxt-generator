@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "apify-llmstxt-generator"
 version = "0.1.0"
-description = "llms.txt generator actor"
+description = "llms.txt generator"
 authors = ["Jakub Kopecky <jakub.kopecky@apify.com>"]
 readme = "README.md"
 package-mode = false
@@ -15,6 +15,9 @@ beautifulsoup4 = "^4.12.3"
 ruff = "^0.8.6"
 mypy = "^1.14.1"
 types-beautifulsoup4 = "^4.12.0.20241020"
+pytest = "^8.3.4"
+pytest-asyncio = "^0.25.2"
+pytest-timeout = "^2.3.1"
 
 [build-system]
 requires = ["poetry-core"]
@@ -104,6 +107,7 @@ max-branches = 18
 [tool.pytest.ini_options]
 addopts = "-ra"
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 timeout = 1200
 
 [tool.mypy]
