@@ -1,9 +1,16 @@
+from typing import TYPE_CHECKING
+
 from src.renderer import render_llms_txt
+
+if TYPE_CHECKING:
+    from src.mytypes import LLMSData
 
 
 def test_render_llms_txt() -> None:
-    data = {
+    data: LLMSData = {
         'title': 'docs.apify.com',
+        'details': None,
+        'description': None,
         'sections': [
            {
                'title': 'Index',
@@ -27,9 +34,10 @@ def test_render_llms_txt() -> None:
     assert render_llms_txt(data) == expected_output
 
 def test_render_llms_txt_with_description() -> None:
-    data = {
+    data: LLMSData = {
         'title': 'docs.apify.com',
         'description': 'Apify documentation',
+        'details': None,
         'sections': [
            {
                'title': 'Index',
@@ -55,7 +63,7 @@ def test_render_llms_txt_with_description() -> None:
     assert render_llms_txt(data) == expected_output
 
 def test_render_llms_txt_with_description_and_details() -> None:
-    data = {
+    data: LLMSData = {
         'title': 'docs.apify.com',
         'description': 'Apify documentation',
         'details': 'This is the documentation for Apify',
@@ -86,9 +94,11 @@ This is the documentation for Apify
     assert render_llms_txt(data) == expected_output
 
 def test_render_llms_txt_with_no_sections() -> None:
-    data = {
+    data: LLMSData = {
         'title': 'docs.apify.com',
         'description': 'Apify documentation',
+        'details': None,
+        'sections': []
     }
 
     expected_output = """# docs.apify.com

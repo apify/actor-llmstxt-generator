@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 
 from apify import Actor
 
-from .helpers import get_crawler_actor_config, get_description_from_kvstore, is_description_suitable
+from .helpers import get_crawler_actor_config, get_description_from_kvstore, is_description_suitable, normalize_url
 from .renderer import render_llms_txt
 
 if TYPE_CHECKING:
@@ -23,6 +23,7 @@ async def main() -> None:
         if url is None:
             msg = 'Missing "startUrl" attribute in input!'
             raise ValueError(msg)
+        url_normalized = normalize_url(url)
 
         max_crawl_depth = int(actor_input.get('maxCrawlDepth', 1))
 
@@ -62,7 +63,7 @@ async def main() -> None:
                 logger.warning('Missing "htmlUrl" attribute in dataset item!')
                 continue
 
-            is_root = item_url == url
+            is_root = normalize_url(item_url) == url_normalized
             if is_root:
                 description = await get_description_from_kvstore(run_store, html_url)
                 data['description'] = description if is_description_suitable(description) else None
@@ -84,7 +85,7 @@ async def main() -> None:
         if is_dataset_empty:
             msg = (
                 'No pages were crawled successfully!'
-                'Please check the "apify/website-content-crawler" actor run for more details.'
+                ' Please check the "apify/website-content-crawler" actor run for more details.'
             )
             raise RuntimeError(msg)
 
