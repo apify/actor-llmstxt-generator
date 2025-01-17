@@ -17,6 +17,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger('apify')
 
 
+def normalize_url(url: str) -> str:
+    """Normalizes the URL by removing trailing slash."""
+    parsed_url = urlparse(url)
+    normalized = parsed_url._replace(path=parsed_url.path.rstrip('/'))
+    return normalized.geturl()
+
+
 def get_hostname_path_string_from_url(url: str) -> str:
     """Extracts the hostname and path from the URL."""
     parsed_url = urlparse(url)
