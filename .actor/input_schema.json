@@ -8,7 +8,7 @@
       "type": "string",
       "description": "The URL from which the crawler will start to generate the llms.txt file.",
       "editor": "textfield",
-      "prefill": "https://docs.apify.com/"
+      "prefill": "https://docs.apify.com/cli/docs"
     },
     "maxCrawlDepth": {
       "title": "Max crawl depth",
