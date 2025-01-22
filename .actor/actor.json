@@ -1,8 +1,8 @@
 {
   "actorSpecification": 1,
   "name": "llmstxt-generator",
-  "title": "Generate llms.txt for the given site",
-  "description": "Generates llms.txt for the given site",
+  "title": "Generate /llms.txt for the given site",
+  "description": "Generates /llms.txt for the given site",
   "version": "0.0",
   "buildTag": "latest",
   "input": "./input_schema.json",
