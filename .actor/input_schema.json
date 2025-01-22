@@ -1,12 +1,12 @@
 {
-  "title": "Generate llms.txt for the given site",
+  "title": "Generate /llms.txt for the given site",
   "type": "object",
   "schemaVersion": 1,
   "properties": {
     "startUrl": {
       "title": "Start URL",
       "type": "string",
-      "description": "The URL from which the crawler will start to generate the llms.txt file.",
+      "description": "The URL from which the crawler will start to generate the /llms.txt file.",
       "editor": "textfield",
       "prefill": "https://docs.apify.com/cli/docs"
     },
