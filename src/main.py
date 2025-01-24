@@ -1,6 +1,8 @@
 """This module defines the main entry point for the llsm.txt generator actor."""
 
+import asyncio
 import logging
+from datetime import timedelta
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
@@ -38,12 +40,27 @@ async def main() -> None:
             ),
             # memory limit for the crawler actor so free tier can use this actor
             memory_mbytes=4096,
+            wait=timedelta(seconds=5),
         )
         if actor_run_details is None:
             msg = 'Failed to start the "apify/website-content-crawler" actor!'
             raise RuntimeError(msg)
 
         run_client = Actor.apify_client.run(actor_run_details.id)
+        last_status_msg = None
+        while (run := await run_client.get()) and run.get('status') == 'RUNNING':
+            status_msg = run.get('statusMessage')
+            if status_msg != last_status_msg:
+                logger.info(f'Crawler status: {status_msg}')
+                last_status_msg = status_msg
+            await asyncio.sleep(5)
+
+        if not (run := await run_client.wait_for_finish()):
+            msg = 'Failed to get the "apify/website-content-crawler" actor run details!'
+            raise RuntimeError(msg)
+        status_msg = run.get('statusMessage')
+        logger.info(f'Crawler status: {status_msg}')
+
         run_store = run_client.key_value_store()
         run_dataset = run_client.dataset()
 
