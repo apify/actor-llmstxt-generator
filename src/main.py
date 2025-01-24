@@ -39,7 +39,6 @@ async def main() -> None:
             ),
             # memory limit for the crawler actor so free tier can use this actor
             memory_mbytes=4096,
-            timeout=timedelta(minutes=10),
         )
         if actor_run_details is None:
             msg = 'Failed to start the "apify/website-content-crawler" actor!'
