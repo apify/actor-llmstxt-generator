@@ -57,11 +57,15 @@ async def get_description_from_kvstore(kvstore: KeyValueStoreClientAsync, html_u
     return get_description_from_html(html)
 
 
-def get_crawler_actor_config(url: str, max_crawl_depth: int = 1) -> dict:
+def get_crawler_actor_config(
+    url: str, max_crawl_depth: int = 1, max_crawl_pages: int = 50, crawler_type: str = 'playwright:adaptive'
+) -> dict:
     """Creates actor input configuration for the `apify/website-content-crawler` actor."""
     config = CRAWLER_CONFIG
     config['startUrls'] = [{'url': url, 'method': 'GET'}]
     config['maxCrawlDepth'] = max_crawl_depth
+    config['maxCrawlPages'] = max_crawl_pages
+    config['crawlerType'] = crawler_type
 
     return config
 

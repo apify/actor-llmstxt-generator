@@ -26,12 +26,16 @@ async def main() -> None:
         url_normalized = normalize_url(url)
 
         max_crawl_depth = int(actor_input.get('maxCrawlDepth', 1))
+        max_crawl_pages = int(actor_input.get('maxCrawlPages', 50))
+        crawler_type = actor_input.get('crawlerType', 'playwright:adaptive')
 
         # call apify/website-content-crawler actor to get the html content
         logger.info(f'Starting the "apify/website-content-crawler" actor for URL: {url}')
         actor_run_details = await Actor.call(
             'apify/website-content-crawler',
-            get_crawler_actor_config(url, max_crawl_depth=max_crawl_depth),
+            get_crawler_actor_config(
+                url, max_crawl_depth=max_crawl_depth, max_crawl_pages=max_crawl_pages, crawler_type=crawler_type
+            ),
             # memory limit for the crawler actor so free tier can use this actor
             memory_mbytes=4096,
         )

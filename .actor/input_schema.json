@@ -16,6 +16,34 @@
       "description": "The maximum depth of the crawl. Default is 1.",
       "editor": "number",
       "default": 1
+    },
+    "maxCrawlPages": {
+      "title": "Max crawl pages",
+      "type": "integer",
+      "description": "The maximum number of pages to crawl. Default is 50.",
+      "editor": "number",
+      "default": 50
+    },
+    "crawlerType": {
+        "title": "Crawler type",
+        "type": "string",
+        "enum": [
+            "playwright:adaptive",
+            "playwright:firefox",
+            "playwright:chrome",
+            "cheerio",
+            "jsdom"
+        ],
+        "enumTitles": [
+            "Adaptive switching between browser and raw HTTP - Fast and renders JavaScript if needed. This is the recommended option.",
+            "Headless browser (Firefox+Playwright) - Reliable, renders JavaScript, best in avoiding blocking, but might be slow.",
+            "Headless browser (Chrome+Playwright) - Deprecated, the crawler will use Firefox+Playwright instead.",
+            "Raw HTTP client (Cheerio) - Fastest crawler, but cannot render JavaScript.",
+            "Raw HTTP client with JavaScript (JSDOM) - Experimental, use at your own risk."
+        ],
+        "description": "Select the crawling engine:\n- **Headless web browser** - Useful for modern websites with anti-scraping protections and JavaScript rendering. It recognizes common blocking patterns like CAPTCHAs and automatically retries blocked requests through new sessions. However, running web browsers is more expensive as it requires more computing resources and is slower. It is recommended to use at least 8 GB of RAM.\n- **Stealthy web browser** (default) - Another headless web browser with anti-blocking measures enabled. Try this if you encounter bot protection while scraping. For best performance, use with Apify Proxy residential IPs. \n- **Adaptive switching between Chrome and raw HTTP client** - The crawler automatically switches between raw HTTP for static pages and Chrome browser (via Playwright) for dynamic pages, to get the maximum performance wherever possible. \n- **Raw HTTP client** - High-performance crawling mode that uses raw HTTP requests to fetch the pages. It is faster and cheaper, but it might not work on all websites.\n\nBeware that with the raw HTTP client or adaptive crawling mode, some features are not available, e.g. wait for dynamic content, maximum scroll height, or remove cookie warnings.",
+        "default": "playwright:adaptive",
+        "prefill": "playwright:adaptive"
     }
   },
   "required": ["startUrl"]
