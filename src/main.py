@@ -27,7 +27,7 @@ async def main() -> None:
         url_normalized = normalize_url(url)
 
         max_crawl_depth = int(actor_input.get('maxCrawlDepth', 1))
-        max_crawl_pages = int(actor_input.get('maxCrawlPages', 100))
+        max_crawl_pages = int(actor_input.get('maxCrawlPages', 50))
         crawler_type = actor_input.get('crawlerType', 'playwright:adaptive')
 
         # call apify/website-content-crawler actor to get the html content

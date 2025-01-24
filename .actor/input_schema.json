@@ -20,9 +20,9 @@
     "maxCrawlPages": {
       "title": "Max crawl pages",
       "type": "integer",
-      "description": "The maximum number of pages to crawl. Default is 100.",
+      "description": "The maximum number of pages to crawl. Default is 50.",
       "editor": "number",
-      "default": 100
+      "default": 50
     },
     "crawlerType": {
         "title": "Crawler type",
