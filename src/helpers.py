@@ -12,14 +12,14 @@ from src.crawler_config import CRAWLER_CONFIG
 if TYPE_CHECKING:
     from apify_client.clients import KeyValueStoreClientAsync
 
-    from src.mytypes import LinkDict, LLMSData
+    from src.mytypes import LLMSData
 
 # not using Actor.log because pytest then throws a warning
 # about non existent event loop
 logger = logging.getLogger('apify')
 
 
-def clean_llms_data(data: LLMSData, section_min_links: int = 2) -> LLMSData:
+def clean_llms_data(data: LLMSData, section_min_links: int = 2) -> None:
     """Cleans the LLMS data by removing sections with low link count and moving the links to the index section.
 
     :param data: LLMS data to clean
@@ -27,28 +27,25 @@ def clean_llms_data(data: LLMSData, section_min_links: int = 2) -> LLMSData:
     and not move the links to the index section
     """
     to_remove_sections: set[str] = set()
-    to_index_links: list[LinkDict] = []
 
     if 'sections' not in data:
         raise ValueError('Missing "sections" attribute in the LLMS data!')
 
     sections = data['sections']
 
-    for section in sections.values():
+    for section_dir, section in sections.items():
+        # skip the index section
+        if section_dir == '/':
+            continue
         if len(section['links']) < section_min_links:
-            to_index_links.extend(section['links'])
-            to_remove_sections.add(section['title'])
+            to_remove_sections.add(section_dir)
 
-    if to_index_links:
+    if to_remove_sections:
         if '/' not in sections:
-            sections['/'] = {'title': 'Index', 'links': to_index_links}
-        else:
-            sections['/']['links'].extend(to_index_links)
-
-    for section_name in to_remove_sections:
-        del sections[section_name]
-
-    return data
+            sections['/'] = {'title': 'Index', 'links': []}
+        for section_dir in to_remove_sections:
+            sections['/']['links'].extend(sections[section_dir]['links'])
+            del sections[section_dir]
 
 
 def get_url_path_dir(url: str) -> str:

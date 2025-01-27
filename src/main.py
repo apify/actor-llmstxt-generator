@@ -155,7 +155,7 @@ async def main() -> None:
             raise RuntimeError(msg)
 
         # move sections with less than SECTION_MIN_LINKS to the root
-        data = clean_llms_data(data)
+        clean_llms_data(data)
         output = render_llms_txt(data)
 
         # save into kv-store as a file to be able to download it
