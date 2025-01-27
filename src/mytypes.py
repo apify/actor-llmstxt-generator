@@ -24,4 +24,4 @@ class LLMSData(TypedDict):
     title: str
     description: str | None
     details: str | None
-    sections: list[SectionDict]
+    sections: dict[str, SectionDict]

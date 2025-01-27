@@ -1,6 +1,6 @@
 .PHONY: clean install-dev lint type-check unit-test format
 
-DIRS_WITH_CODE = src
+DIRS_WITH_CODE = src/ tests/
 
 clean:
 	rm -rf .mypy_cache .pytest_cache .ruff_cache build dist htmlcov .coverage
