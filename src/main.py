@@ -1,6 +1,7 @@
 """This module defines the main entry point for the llsm.txt generator actor."""
 
 import logging
+from datetime import timedelta
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
@@ -13,6 +14,9 @@ if TYPE_CHECKING:
     from src.mytypes import LLMSData, SectionDict
 
 logger = logging.getLogger('apify')
+
+# minimum for the llms.txt generator to process the results
+MIN_GENERATOR_RUN_SECS = 60
 
 
 async def main() -> None:
@@ -29,6 +33,28 @@ async def main() -> None:
         max_crawl_pages = int(actor_input.get('maxCrawlPages', 50))
         crawler_type = actor_input.get('crawlerType', 'playwright:adaptive')
 
+        if run_id := Actor.config.actor_run_id:
+            if not (run := await Actor.apify_client.run(run_id).get()):
+                msg = 'Failed to get the actor run details!'
+                raise RuntimeError(msg)
+
+            if not (timeout_secs := run.get('options', {}).get('timeoutSecs')):
+                msg = 'Missing "timeoutSecs" attribute in actor run details!'
+                raise ValueError(msg)
+
+            # crawler timeout is set to timeout - MIN_GENERATOR_RUN_SECS or timeout if tha time is too low
+            timeout_crawler = timedelta(
+                seconds=(
+                    timeout_secs - MIN_GENERATOR_RUN_SECS
+                    if timeout_secs >= MIN_GENERATOR_RUN_SECS * 2
+                    else timeout_secs
+                )
+            )
+        # if run is local, do not set the timeout
+        else:
+            logger.warning('Running the actor locally, not setting the crawler timeout!')
+            timeout_crawler = None
+
         # call apify/website-content-crawler actor to get the html content
         logger.info(f'Starting the "apify/website-content-crawler" actor for URL: {url}')
         actor_run_details = await Actor.call(
@@ -38,6 +64,7 @@ async def main() -> None:
             ),
             # memory limit for the crawler actor so free tier can use this actor
             memory_mbytes=4096,
+            timeout=timeout_crawler,
         )
         if actor_run_details is None:
             msg = 'Failed to start the "apify/website-content-crawler" actor!'
