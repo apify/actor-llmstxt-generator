@@ -19,6 +19,24 @@ if TYPE_CHECKING:
 logger = logging.getLogger('apify')
 
 
+def get_section_dir_title(section_dir: str, path_titles: dict[str, str]) -> str:
+    """Gets the title of the section from the path titles."""
+    current_dir = section_dir
+    while (parent_title := path_titles.get(current_dir)) is None:
+        current_dir = current_dir.rsplit('/', 1)[0]
+        if not current_dir:
+            parent_title = section_dir
+            break
+    return parent_title
+
+
+def get_h1_from_html(html: str) -> str | None:
+    """Extracts the first h1 tag from the HTML content."""
+    soup = bs4.BeautifulSoup(html, 'html.parser')
+    h1 = soup.find('h1')
+    return h1.getText() if h1 else None
+
+
 def clean_llms_data(data: LLMSData, section_min_links: int = 2) -> None:
     """Cleans the LLMS data by removing sections with low link count and moving the links to the index section.
 
@@ -46,6 +64,13 @@ def clean_llms_data(data: LLMSData, section_min_links: int = 2) -> None:
         for section_dir in to_remove_sections:
             sections['/']['links'].extend(sections[section_dir]['links'])
             del sections[section_dir]
+
+
+def get_url_path(url: str) -> str:
+    """Get the path from the URL."""
+    url_normalized = normalize_url(url)
+    parsed_url = urlparse(url_normalized)
+    return parsed_url.path or '/'
 
 
 def get_url_path_dir(url: str) -> str:
@@ -82,8 +107,8 @@ def is_description_suitable(description: str | None) -> bool:
     return '\n' not in description
 
 
-async def get_description_from_kvstore(kvstore: KeyValueStoreClientAsync, html_url: str) -> str | None:
-    """Extracts the description from the HTML content stored in the KV store."""
+async def get_html_from_kvstore(kvstore: KeyValueStoreClientAsync, html_url: str) -> str | None:
+    """Gets the HTML content from the KV store."""
     store_id = html_url.split('records/')[-1]
     if not (record := await kvstore.get_record(store_id)):
         logger.warning(f'Failed to get record with id "{store_id}"!')
@@ -92,7 +117,7 @@ async def get_description_from_kvstore(kvstore: KeyValueStoreClientAsync, html_u
         logger.warning(f'Invalid HTML content for record with id "{store_id}"!')
         return None
 
-    return get_description_from_html(html)
+    return str(html)
 
 
 def get_crawler_actor_config(

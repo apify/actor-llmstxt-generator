@@ -11,7 +11,11 @@ from apify import Actor
 from .helpers import (
     clean_llms_data,
     get_crawler_actor_config,
-    get_description_from_kvstore,
+    get_description_from_html,
+    get_h1_from_html,
+    get_html_from_kvstore,
+    get_section_dir_title,
+    get_url_path,
     get_url_path_dir,
     is_description_suitable,
     normalize_url,
@@ -110,42 +114,44 @@ async def main() -> None:
         sections = data['sections']
 
         is_dataset_empty = True
+        path_titles: dict[str, str] = {}
+        sections_to_fill_title = []
         async for item in run_dataset.iterate_items():
             is_dataset_empty = False
-            item_url = item.get('url')
-            logger.info(f'Processing page: {item_url}')
-            if item_url is None:
+            if (item_url := item.get('url')) is None:
                 logger.warning('Missing "url" attribute in dataset item!')
                 continue
-            html_url = item.get('htmlUrl')
-            if html_url is None:
+            logger.info(f'Processing page: {item_url}')
+            if (html_url := item.get('htmlUrl')) is None:
                 logger.warning('Missing "htmlUrl" attribute in dataset item!')
                 continue
+
+            html = await get_html_from_kvstore(run_store, html_url)
+            metadata = item.get('metadata', {})
+            description = metadata.get('description') or (get_description_from_html(html) if html else None)
+            title = (get_h1_from_html(html) if html else None) or metadata.get('title')
+            path_titles[get_url_path(item_url)] = title
 
             # handle input root url separately
             is_root = normalize_url(item_url) == url_normalized
             if is_root:
-                description = await get_description_from_kvstore(run_store, html_url)
                 data['description'] = description if is_description_suitable(description) else None
                 continue
 
-            metadata = item.get('metadata', {})
-            description = metadata.get('description')
-            title = metadata.get('title')
-
-            # extract description from HTML, crawler might not have extracted it
-            if description is None:
-                description = await get_description_from_kvstore(run_store, html_url)
-
-            if not is_description_suitable(description):
-                description = None
-
             section_dir = get_url_path_dir(item_url)
-            section_title = section_dir
-            if section_title not in sections:
-                sections[section_dir] = {'title': section_title, 'links': []}
+            section_title = path_titles.get(section_dir)
+            if section_dir not in sections:
+                sections[section_dir] = {'title': section_title or section_dir, 'links': []}
+                if section_title is None:
+                    sections_to_fill_title.append(section_dir)
 
-            sections[section_dir]['links'].append({'url': item_url, 'title': title, 'description': description})
+            sections[section_dir]['links'].append(
+                {
+                    'url': item_url,
+                    'title': title,
+                    'description': description if is_description_suitable(description) else None,
+                }
+            )
 
         if is_dataset_empty:
             msg = (
@@ -153,6 +159,9 @@ async def main() -> None:
                 ' Please check the "apify/website-content-crawler" actor run for more details.'
             )
             raise RuntimeError(msg)
+
+        for section_dir in sections_to_fill_title:
+            sections[section_dir]['title'] = get_section_dir_title(section_dir, path_titles)
 
         # move sections with less than SECTION_MIN_LINKS to the root
         clean_llms_data(data)
