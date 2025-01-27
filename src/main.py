@@ -8,16 +8,25 @@ from urllib.parse import urlparse
 
 from apify import Actor
 
-from .helpers import get_crawler_actor_config, get_description_from_kvstore, is_description_suitable, normalize_url
+from .helpers import (
+    clean_llms_data,
+    get_crawler_actor_config,
+    get_description_from_kvstore,
+    get_url_path_dir,
+    is_description_suitable,
+    normalize_url,
+)
 from .renderer import render_llms_txt
 
 if TYPE_CHECKING:
-    from src.mytypes import LLMSData, SectionDict
+    from src.mytypes import LLMSData
 
 logger = logging.getLogger('apify')
 
 # minimum for the llms.txt generator to process the results
 MIN_GENERATOR_RUN_SECS = 60
+LOG_POLL_INTERVAL_SECS = 5
+SECTION_MIN_LINKS = 2
 
 
 async def main() -> None:
@@ -66,7 +75,7 @@ async def main() -> None:
             ),
             # memory limit for the crawler actor so free tier can use this actor
             memory_mbytes=4096,
-            wait=timedelta(seconds=5),
+            wait=timedelta(seconds=LOG_POLL_INTERVAL_SECS),
             timeout=timeout_crawler,
         )
         if actor_run_details is None:
@@ -82,7 +91,7 @@ async def main() -> None:
                 if status_msg is not None:
                     await Actor.set_status_message(status_msg)
                 last_status_msg = status_msg
-            await asyncio.sleep(5)
+            await asyncio.sleep(LOG_POLL_INTERVAL_SECS)
 
         if not (run := await run_client.wait_for_finish()):
             msg = 'Failed to get the "apify/website-content-crawler" actor run details!'
@@ -97,9 +106,8 @@ async def main() -> None:
         hostname = urlparse(url).hostname
         root_title = hostname
 
-        data: LLMSData = {'title': root_title, 'description': None, 'details': None, 'sections': []}
-        # add all pages to index section for now
-        section: SectionDict = {'title': 'Index', 'links': []}
+        data: LLMSData = {'title': root_title, 'description': None, 'details': None, 'sections': {}}
+        sections = data['sections']
 
         is_dataset_empty = True
         async for item in run_dataset.iterate_items():
@@ -114,6 +122,7 @@ async def main() -> None:
                 logger.warning('Missing "htmlUrl" attribute in dataset item!')
                 continue
 
+            # handle input root url separately
             is_root = normalize_url(item_url) == url_normalized
             if is_root:
                 description = await get_description_from_kvstore(run_store, html_url)
@@ -131,7 +140,12 @@ async def main() -> None:
             if not is_description_suitable(description):
                 description = None
 
-            section['links'].append({'url': item_url, 'title': title, 'description': description})
+            section_dir = get_url_path_dir(item_url)
+            section_title = section_dir
+            if section_title not in sections:
+                sections[section_dir] = {'title': section_title, 'links': []}
+
+            sections[section_dir]['links'].append({'url': item_url, 'title': title, 'description': description})
 
         if is_dataset_empty:
             msg = (
@@ -140,9 +154,8 @@ async def main() -> None:
             )
             raise RuntimeError(msg)
 
-        if section['links']:
-            data['sections'].append(section)
-
+        # move sections with less than SECTION_MIN_LINKS to the root
+        data = clean_llms_data(data)
         output = render_llms_txt(data)
 
         # save into kv-store as a file to be able to download it

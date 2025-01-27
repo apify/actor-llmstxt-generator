@@ -38,12 +38,15 @@ def render_llms_txt(data: LLMSData) -> str:
     if data.get('details'):
         result.append(f"{data['details']}\n\n")
 
-    for section in data.get('sections', []):
+    # for section in data.get('sections', {}).values():
+    for section_dir in sorted(data.get('sections', {})):
+        section = data['sections'][section_dir]
         result.append(f"## {section['title']}\n\n")
         for link in section.get('links', []):
             link_str = f"- [{link['title']}]({link['url']})"
             if link.get('description'):
                 link_str += f": {link['description']}"
             result.append(f'{link_str}\n')
+        result.append('\n')
 
     return ''.join(result)

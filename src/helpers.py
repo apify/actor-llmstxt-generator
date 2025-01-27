@@ -12,9 +12,50 @@ from src.crawler_config import CRAWLER_CONFIG
 if TYPE_CHECKING:
     from apify_client.clients import KeyValueStoreClientAsync
 
+    from src.mytypes import LinkDict, LLMSData
+
 # not using Actor.log because pytest then throws a warning
 # about non existent event loop
 logger = logging.getLogger('apify')
+
+
+def clean_llms_data(data: LLMSData, section_min_links: int = 2) -> LLMSData:
+    """Cleans the LLMS data by removing sections with low link count and moving the links to the index section.
+
+    :param data: LLMS data to clean
+    :param section_min_links: Minimum number of links in a section to keep it
+    and not move the links to the index section
+    """
+    to_remove_sections: set[str] = set()
+    to_index_links: list[LinkDict] = []
+
+    if 'sections' not in data:
+        raise ValueError('Missing "sections" attribute in the LLMS data!')
+
+    sections = data['sections']
+
+    for section in sections.values():
+        if len(section['links']) < section_min_links:
+            to_index_links.extend(section['links'])
+            to_remove_sections.add(section['title'])
+
+    if to_index_links:
+        if '/' not in sections:
+            sections['/'] = {'title': 'Index', 'links': to_index_links}
+        else:
+            sections['/']['links'].extend(to_index_links)
+
+    for section_name in to_remove_sections:
+        del sections[section_name]
+
+    return data
+
+
+def get_url_path_dir(url: str) -> str:
+    """Get the directory path from the URL."""
+    url_normalized = normalize_url(url)
+    parsed_url = urlparse(url_normalized)
+    return parsed_url.path.rsplit('/', 1)[0] or '/'
 
 
 def normalize_url(url: str) -> str:
