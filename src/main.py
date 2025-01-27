@@ -1,5 +1,6 @@
 """This module defines the main entry point for the llsm.txt generator actor."""
 
+import asyncio
 import logging
 from datetime import timedelta
 from typing import TYPE_CHECKING
@@ -57,6 +58,7 @@ async def main() -> None:
 
         # call apify/website-content-crawler actor to get the html content
         logger.info(f'Starting the "apify/website-content-crawler" actor for URL: {url}')
+        await Actor.set_status_message('Starting the crawler...')
         actor_run_details = await Actor.call(
             'apify/website-content-crawler',
             get_crawler_actor_config(
@@ -64,6 +66,7 @@ async def main() -> None:
             ),
             # memory limit for the crawler actor so free tier can use this actor
             memory_mbytes=4096,
+            wait=timedelta(seconds=5),
             timeout=timeout_crawler,
         )
         if actor_run_details is None:
@@ -71,6 +74,23 @@ async def main() -> None:
             raise RuntimeError(msg)
 
         run_client = Actor.apify_client.run(actor_run_details.id)
+        last_status_msg = None
+        while (run := await run_client.get()) and run.get('status') == 'RUNNING':
+            status_msg = run.get('statusMessage')
+            if status_msg != last_status_msg:
+                logger.info(f'Crawler status: {status_msg}')
+                if status_msg is not None:
+                    await Actor.set_status_message(status_msg)
+                last_status_msg = status_msg
+            await asyncio.sleep(5)
+
+        if not (run := await run_client.wait_for_finish()):
+            msg = 'Failed to get the "apify/website-content-crawler" actor run details!'
+            raise RuntimeError(msg)
+        status_msg = run.get('statusMessage')
+        logger.info(f'Crawler status: {status_msg}')
+        await Actor.set_status_message('Crawler finished! Processing the results...')
+
         run_store = run_client.key_value_store()
         run_dataset = run_client.dataset()
 
@@ -132,3 +152,5 @@ async def main() -> None:
 
         await Actor.push_data({'llms.txt': output})
         logger.info('Pushed the "llms.txt" file to the dataset!')
+
+        await Actor.set_status_message('Finished! Saved the "llms.txt" file into the key-value store and dataset...')
