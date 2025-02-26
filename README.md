@@ -1,5 +1,9 @@
 # /llms.txt Generator 🚀📄
 
+
+[![Agent Actor Inspector](https://apify.com/actor-badge?actor=jakub.kopecky/llmstxt-generator)](https://apify.com/jakub.kopecky/llmstxt-generator)
+[![GitHub Repo stars](https://img.shields.io/github/stars/apify/actor-llmstxt-generator)](https://github.com/apify/actor-llmstxt-generator/stargazers)
+
 The **/llms.txt Generator** is an Apify Actor that helps you extract essential website content and generate an [/llms.txt](https://llmstxt.org/) file, making your content ready for AI-powered applications such as fine-tuning, indexing, and integrating large language models (LLMs) like GPT-4, ChatGPT, or LLaMA. This Actor leverages the [Website Content Crawler](https://apify.com/apify/website-content-crawler) actor to perform deep crawls and extract text content from web pages, ensuring comprehensive data collection. The Website Content Crawler is particularly useful because it supports output in multiple formats, including markdown, which is used by the **/llms.txt**.
 
 ## 🌟 What is /llms.txt?
