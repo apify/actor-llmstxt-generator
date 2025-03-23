@@ -78,7 +78,7 @@ async def main() -> None:
                 url, max_crawl_depth=max_crawl_depth, max_crawl_pages=max_crawl_pages, crawler_type=crawler_type
             ),
             # memory limit for the crawler actor so free tier can use this actor
-            memory_mbytes=4096,
+            memory_mbytes=2048,
             wait=timedelta(seconds=LOG_POLL_INTERVAL_SECS),
             timeout=timeout_crawler,
         )
