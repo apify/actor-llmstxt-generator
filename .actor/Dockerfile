@@ -1,26 +1,31 @@
 FROM apify/actor-python:3.12
 
-WORKDIR /usr/src/app
+# Second, copy just requirements.txt into the Actor image,
+# since it should be the only file that affects the dependency install in the next step,
+# in order to speed up the build
+COPY pyproject.toml uv.lock ./
 
-COPY pyproject.toml poetry.lock pyproject.toml ./
-
-ARG ACTOR_PATH_IN_DOCKER_CONTEXT
-ENV ACTOR_PATH_IN_DOCKER_CONTEXT="${ACTOR_PATH_IN_DOCKER_CONTEXT}"
-
+# Install the packages specified in requirements.txt,
+# Print the installed Python version, pip version
+# and all installed packages with their versions for debugging
 RUN echo "Python version:" \
     && python --version \
     && echo "Pip version:" \
     && pip --version \
-    && echo "Installing Poetry:" \
-    && pip install --no-cache-dir poetry~=1.8 \
+    && echo "Installing uv:" \
+    && pip install --no-cache-dir uv \
     && echo "Installing dependencies:" \
-    && poetry config virtualenvs.create false \
-    && poetry install --no-interaction --no-ansi --without dev \
-    && rm -rf /tmp/.poetry-cache \
+    && uv sync --frozen --no-dev \
     && echo "All installed Python packages:" \
-    && pip freeze
+    && uv pip freeze
 
-COPY src ./src
+# Next, copy the remaining files and directories with the source code.
+# Since we do this after installing the dependencies, quick build will be really fast
+# for most source file changes.
+COPY . ./
+
+# Use compileall to ensure the runnability of the Actor Python code.
+#RUN python3 -m compileall -q .
 
 # create non-root user
 RUN useradd -m apify && \
@@ -28,4 +33,7 @@ RUN useradd -m apify && \
 
 USER apify
 
+# Specify how to launch the source code of your Actor.
+# By default, the "python3 -m ." command is run
+ENV PATH="/usr/src/app/.venv/bin:$PATH"
 CMD ["python3", "-m", "src"]

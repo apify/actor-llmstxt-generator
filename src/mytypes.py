@@ -25,3 +25,11 @@ class LLMSData(TypedDict):
     description: str | None
     details: str | None
     sections: dict[str, SectionDict]
+
+
+class CrawledPage(TypedDict):
+    """Dictionary representing the crawled pages."""
+
+    url: str
+    title: str
+    description: str | None

@@ -30,7 +30,7 @@ def render_llms_txt(data: LLMSData) -> str:
     - [Example](https://example.com): Example description
 
     """
-    result = [f"# {data['title'].strip()}\n\n"]
+    result = [f'# {data["title"].strip()}\n\n']
 
     if description := data.get('description'):
         result.append(f'> {description.strip()}\n\n')
@@ -40,9 +40,9 @@ def render_llms_txt(data: LLMSData) -> str:
 
     for section_dir in sorted(data.get('sections', {})):
         section = data['sections'][section_dir]
-        result.append(f"## {section['title'].strip()}\n\n")
+        result.append(f'## {section["title"].strip()}\n\n')
         for link in section.get('links', []):
-            link_str = f"- [{link['title'].strip()}]({link['url'].strip()})"
+            link_str = f'- [{link["title"].strip()}]({link["url"].strip()})'
             if link_description := link.get('description'):
                 link_str += f': {link_description.strip()}'
             result.append(f'{link_str}\n')

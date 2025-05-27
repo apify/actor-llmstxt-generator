@@ -7,11 +7,7 @@ from urllib.parse import urlparse
 import bs4
 from bs4.element import NavigableString
 
-from src.crawler_config import CRAWLER_CONFIG
-
 if TYPE_CHECKING:
-    from apify_client.clients import KeyValueStoreClientAsync
-
     from src.mytypes import LLMSData
 
 # not using Actor.log because pytest then throws a warning
@@ -33,6 +29,11 @@ def get_section_dir_title(section_dir: str, path_titles: dict[str, str]) -> str:
 def get_h1_from_html(html: str) -> str | None:
     """Extracts the first h1 tag from the HTML content."""
     soup = bs4.BeautifulSoup(html, 'html.parser')
+    return get_h1_from_soup(soup)
+
+
+def get_h1_from_soup(soup: bs4.BeautifulSoup) -> str | None:
+    """Extracts the first h1 tag from the BeautifulSoup object."""
     h1 = soup.find('h1')
     return h1.getText() if h1 else None
 
@@ -107,38 +108,20 @@ def is_description_suitable(description: str | None) -> bool:
     return '\n' not in description
 
 
-async def get_html_from_kvstore(kvstore: KeyValueStoreClientAsync, html_url: str) -> str | None:
-    """Gets the HTML content from the KV store."""
-    store_id = html_url.split('records/')[-1]
-    if not (record := await kvstore.get_record(store_id)):
-        logger.warning(f'Failed to get record with id "{store_id}"!')
-        return None
-    if not (html := record.get('value')) or not isinstance(html, str):
-        logger.warning(f'Invalid HTML content for record with id "{store_id}"!')
-        return None
-
-    return str(html)
-
-
-def get_crawler_actor_config(
-    url: str, max_crawl_depth: int = 1, max_crawl_pages: int = 50, crawler_type: str = 'playwright:adaptive'
-) -> dict:
-    """Creates actor input configuration for the `apify/website-content-crawler` actor."""
-    config = CRAWLER_CONFIG
-    config['startUrls'] = [{'url': url, 'method': 'GET'}]
-    config['maxCrawlDepth'] = max_crawl_depth
-    config['maxCrawlPages'] = max_crawl_pages
-    config['crawlerType'] = crawler_type
-
-    return config
-
-
 def get_description_from_html(html: str) -> None | str:
     """Extracts the description from the HTML content.
 
     Uses meta 'description' or 'Description' from the html.
     """
     soup = bs4.BeautifulSoup(html, 'html.parser')
+    return get_description_from_soup(soup)
+
+
+def get_description_from_soup(soup: bs4.BeautifulSoup) -> None | str:
+    """Extracts the description from the BeautifulSoup object.
+
+    Uses meta 'description' or 'Description' from the html.
+    """
     description = soup.find('meta', {'name': 'description'})
     if description is None:
         description = soup.find('meta', {'name': 'Description'})

@@ -1,27 +1,27 @@
-[tool.poetry]
+[project]
+authors = [
+    {name = "Jakub Kopecky", email = "jakub.kopecky@apify.com"},
+]
+requires-python = "<4.0,>=3.12"
+dependencies = [
+    "apify<3.0.0,>=2.1.0",
+    "beautifulsoup4<5.0.0,>=4.12.3",
+    "crawlee[beautifulsoup]>=0.6.9",
+]
 name = "apify-llmstxt-generator"
-version = "0.1.0"
+version = "0.2.0"
 description = "/llms.txt generator"
-authors = ["Jakub Kopecky <jakub.kopecky@apify.com>"]
 readme = "README.md"
-package-mode = false
 
-[tool.poetry.dependencies]
-python = "^3.12"
-apify = "^2.1.0"
-beautifulsoup4 = "^4.12.3"
-
-[tool.poetry.group.dev.dependencies]
-ruff = "^0.8.6"
-mypy = "^1.14.1"
-types-beautifulsoup4 = "^4.12.0.20241020"
-pytest = "^8.3.4"
-pytest-asyncio = "^0.25.2"
-pytest-timeout = "^2.3.1"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+[dependency-groups]
+dev = [
+    "ruff<1.0.0,>=0.8.6",
+    "mypy<2.0.0,>=1.14.1",
+    "types-beautifulsoup4<5.0.0.0,>=4.12.0.20241020",
+    "pytest<9.0.0,>=8.3.4",
+    "pytest-asyncio<1.0.0,>=0.25.2",
+    "pytest-timeout<3.0.0,>=2.3.1",
+]
 
 [tool.pyright]
 venvPath = "."

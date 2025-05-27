@@ -1,19 +1,15 @@
 """This module defines the main entry point for the llsm.txt generator actor."""
 
-import asyncio
 import logging
-from datetime import timedelta
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 from apify import Actor
 
+from src.crawler import run_crawler
+
 from .helpers import (
     clean_llms_data,
-    get_crawler_actor_config,
-    get_description_from_html,
-    get_h1_from_html,
-    get_html_from_kvstore,
     get_section_dir_title,
     get_url_path,
     get_url_path_dir,
@@ -27,9 +23,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger('apify')
 
-# minimum for the llms.txt generator to process the results
-MIN_GENERATOR_RUN_SECS = 60
-LOG_POLL_INTERVAL_SECS = 5
+# section with less than this number of links will be moved to the index section
 SECTION_MIN_LINKS = 2
 
 
@@ -45,67 +39,11 @@ async def main() -> None:
 
         max_crawl_depth = int(actor_input.get('maxCrawlDepth', 1))
         max_crawl_pages = int(actor_input.get('maxCrawlPages', 50))
-        crawler_type = actor_input.get('crawlerType', 'playwright:adaptive')
 
-        if run_id := Actor.config.actor_run_id:
-            if not (run := await Actor.apify_client.run(run_id).get()):
-                msg = 'Failed to get the actor run details!'
-                raise RuntimeError(msg)
-
-            if not (timeout_secs := run.get('options', {}).get('timeoutSecs')):
-                msg = 'Missing "timeoutSecs" attribute in actor run details!'
-                raise ValueError(msg)
-
-            # crawler timeout is set to timeout - MIN_GENERATOR_RUN_SECS or timeout if tha time is too low
-            timeout_crawler = timedelta(
-                seconds=(
-                    timeout_secs - MIN_GENERATOR_RUN_SECS
-                    if timeout_secs >= MIN_GENERATOR_RUN_SECS * 2
-                    else timeout_secs
-                )
-            )
-        # if run is local, do not set the timeout
-        else:
-            logger.warning('Running the actor locally, not setting the crawler timeout!')
-            timeout_crawler = None
-
-        # call apify/website-content-crawler actor to get the html content
-        logger.info(f'Starting the "apify/website-content-crawler" actor for URL: {url}')
-        await Actor.set_status_message('Starting the crawler...')
-        actor_run_details = await Actor.call(
-            'apify/website-content-crawler',
-            get_crawler_actor_config(
-                url, max_crawl_depth=max_crawl_depth, max_crawl_pages=max_crawl_pages, crawler_type=crawler_type
-            ),
-            # memory limit for the crawler actor so free tier can use this actor
-            memory_mbytes=2048,
-            wait=timedelta(seconds=LOG_POLL_INTERVAL_SECS),
-            timeout=timeout_crawler,
+        proxy_config = await Actor.create_proxy_configuration()
+        results = await run_crawler(
+            url=url, max_crawl_depth=max_crawl_depth, max_crawl_pages=max_crawl_pages, proxy=proxy_config
         )
-        if actor_run_details is None:
-            msg = 'Failed to start the "apify/website-content-crawler" actor!'
-            raise RuntimeError(msg)
-
-        run_client = Actor.apify_client.run(actor_run_details.id)
-        last_status_msg = None
-        while (run := await run_client.get()) and run.get('status') == 'RUNNING':
-            status_msg = run.get('statusMessage')
-            if status_msg != last_status_msg:
-                logger.info(f'Crawler status: {status_msg}')
-                if status_msg is not None:
-                    await Actor.set_status_message(status_msg)
-                last_status_msg = status_msg
-            await asyncio.sleep(LOG_POLL_INTERVAL_SECS)
-
-        if not (run := await run_client.wait_for_finish()):
-            msg = 'Failed to get the "apify/website-content-crawler" actor run details!'
-            raise RuntimeError(msg)
-        status_msg = run.get('statusMessage')
-        logger.info(f'Crawler status: {status_msg}')
-        await Actor.set_status_message('Crawler finished! Processing the results...')
-
-        run_store = run_client.key_value_store()
-        run_dataset = run_client.dataset()
 
         hostname = urlparse(url).hostname
         root_title = hostname
@@ -116,20 +54,15 @@ async def main() -> None:
         is_dataset_empty = True
         path_titles: dict[str, str] = {}
         sections_to_fill_title = []
-        async for item in run_dataset.iterate_items():
+        for item in results:
             is_dataset_empty = False
             if (item_url := item.get('url')) is None:
                 logger.warning('Missing "url" attribute in dataset item!')
                 continue
             logger.info(f'Processing page: {item_url}')
-            if (html_url := item.get('htmlUrl')) is None:
-                logger.warning('Missing "htmlUrl" attribute in dataset item!')
-                continue
 
-            html = await get_html_from_kvstore(run_store, html_url)
-            metadata = item.get('metadata', {})
-            description = metadata.get('description') or (get_description_from_html(html) if html else None)
-            title = (get_h1_from_html(html) if html else None) or metadata.get('title')
+            description = item['description']
+            title = item['title']
             path_titles[get_url_path(item_url)] = title
 
             # handle input root url separately
@@ -164,7 +97,7 @@ async def main() -> None:
             sections[section_dir]['title'] = get_section_dir_title(section_dir, path_titles)
 
         # move sections with less than SECTION_MIN_LINKS to the root
-        clean_llms_data(data)
+        clean_llms_data(data, section_min_links=SECTION_MIN_LINKS)
         output = render_llms_txt(data)
 
         # save into kv-store as a file to be able to download it
