@@ -91,17 +91,6 @@ Our Actor is designed to simplify and automate the creation of **/llms.txt** fil
 - **Future-proof**: Follows a standardized format that’s gaining adoption in the AI community.
 - **User-friendly**: Easy integration into customer-facing products, allowing users to generate **/llms.txt** files effortlessly.
 
----
-
-## 🔧 Technical highlights
-
-- Built on the [Apify SDK](https://docs.apify.com/sdk/python), leveraging state-of-the-art web scraping tools.
-- Designed to handle JavaScript-heavy websites using headless browsers.
-- Equipped with anti-scraping features like proxy rotation and browser fingerprinting.
-- Extensible for custom use cases.
-
----
-
 ## 📖 Learn more
 
 - [Apify platform](https://apify.com)
