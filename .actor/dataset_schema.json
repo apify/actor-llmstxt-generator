@@ -1,18 +1,36 @@
 {
   "actorSpecification": 1,
+  "fields": {
+    "type": "object",
+    "properties": {
+      "url": { "type": "string", "description": "The start URL." },
+      "llms.txt": { "type": "string", "description": "Content of the generated llms.txt file." },
+      "llmsTxtUrl": { "type": "string", "description": "Download URL of llms.txt." },
+      "llmsFullTxtUrl": { "type": ["string", "null"], "description": "Download URL of llms-full.txt." },
+      "pagesCrawled": { "type": "integer", "description": "Number of crawled pages." },
+      "linksInLlmsTxt": { "type": "integer", "description": "Number of links in llms.txt." },
+      "existingLlmsTxtUrl": {
+        "type": ["string", "null"],
+        "description": "URL of an llms.txt the site already publishes, if found."
+      }
+    }
+  },
   "views": {
     "overview": {
       "title": "Overview",
       "transformation": {
-        "fields": ["llms.txt"]
+        "fields": ["url", "llmsTxtUrl", "llmsFullTxtUrl", "pagesCrawled", "linksInLlmsTxt", "existingLlmsTxtUrl", "llms.txt"]
       },
       "display": {
         "component": "table",
         "properties": {
-          "llms.txt": {
-            "label": "llms.txt",
-            "format": "text"
-          }
+          "url": { "label": "Start URL", "format": "link" },
+          "llmsTxtUrl": { "label": "llms.txt", "format": "link" },
+          "llmsFullTxtUrl": { "label": "llms-full.txt", "format": "link" },
+          "pagesCrawled": { "label": "Pages crawled", "format": "number" },
+          "linksInLlmsTxt": { "label": "Links", "format": "number" },
+          "existingLlmsTxtUrl": { "label": "Existing llms.txt on the site", "format": "link" },
+          "llms.txt": { "label": "llms.txt content", "format": "text" }
         }
       }
     }

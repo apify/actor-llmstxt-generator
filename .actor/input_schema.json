@@ -6,23 +6,69 @@
     "startUrl": {
       "title": "Start URL",
       "type": "string",
-      "description": "The URL from which the crawler will start to generate the /llms.txt file.",
+      "description": "The page the crawl starts from, usually the root of the documentation (e.g. `https://docs.apify.com/cli/docs`). Only pages under this URL path are included.",
       "editor": "textfield",
       "prefill": "https://docs.apify.com/cli/docs"
     },
     "maxCrawlDepth": {
       "title": "Max crawl depth",
       "type": "integer",
-      "description": "The maximum depth of the crawl. Default is 1.",
+      "description": "How many links away from the start page to go. `1` includes the pages linked from the start page (usually the whole navigation of a docs site), `2` also the pages linked from those.",
       "editor": "number",
+      "minimum": 0,
+      "maximum": 10,
       "default": 1
     },
     "maxCrawlPages": {
       "title": "Max crawl pages",
       "type": "integer",
-      "description": "The maximum number of pages to crawl. Default is 50.",
+      "description": "Maximum number of pages to crawl. Pages are picked in navigation order, so the most prominent pages are crawled first.",
       "editor": "number",
+      "minimum": 1,
+      "maximum": 5000,
       "default": 50
+    },
+    "excludeUrlGlobs": {
+      "title": "Exclude URLs",
+      "type": "array",
+      "description": "Glob patterns of URLs to skip, e.g. `*/docs/1.*` for old documentation versions. `*` matches any characters including `/`.",
+      "editor": "stringList",
+      "default": []
+    },
+    "generateLlmsFullTxt": {
+      "title": "Generate llms-full.txt",
+      "type": "boolean",
+      "description": "Also generate `llms-full.txt` with the full content of all pages as Markdown. Uses the Markdown version of a page when the site provides one, otherwise converts the HTML.",
+      "default": true
+    },
+    "linkToMarkdown": {
+      "title": "Link to Markdown versions of pages",
+      "type": "boolean",
+      "description": "When a page advertises a Markdown version (`<link rel=\"alternate\" type=\"text/markdown\">`), link to it in `llms.txt` instead of the HTML page. AI agents read Markdown faster and cheaper.",
+      "default": true
+    },
+    "aiCuration": {
+      "title": "Curate with AI",
+      "type": "boolean",
+      "description": "Use an LLM to group pages by what a developer wants to do, write the summary and move secondary pages to the Optional section. Runs through the Apify OpenRouter proxy and is billed to your Apify account (usually well under $0.01 per run on paid plans). Only works on the Apify platform.",
+      "default": false,
+      "sectionCaption": "AI curation"
+    },
+    "aiModel": {
+      "title": "AI model",
+      "type": "string",
+      "description": "OpenRouter model ID used for AI curation.",
+      "editor": "textfield",
+      "default": "openai/gpt-4.1-mini"
+    },
+    "proxyConfiguration": {
+      "title": "Proxy configuration",
+      "type": "object",
+      "description": "Most documentation sites work without a proxy, which is also faster. Enable Apify Proxy if the site blocks the crawler.",
+      "editor": "proxy",
+      "default": { "useApifyProxy": false },
+      "prefill": { "useApifyProxy": false },
+      "sectionCaption": "Proxy"
     }
   },
   "required": ["startUrl"]

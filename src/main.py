@@ -1,111 +1,159 @@
-"""This module defines the main entry point for the llsm.txt generator actor."""
+"""Entry point of the /llms.txt generator Actor."""
+
+from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
-from urllib.parse import urlparse
+import time
+from datetime import timedelta
+from typing import TYPE_CHECKING, Any
 
 from apify import Actor
 
-from src.crawler import run_crawler
-
-from .helpers import (
-    clean_llms_data,
-    get_section_dir_title,
-    get_url_path,
-    get_url_path_dir,
-    is_description_suitable,
-    normalize_url,
-)
-from .renderer import render_llms_txt
+from src.builder import build_llms_data, entries_in_llms_order
+from src.crawler import CrawlSettings, run_crawler
+from src.curation import DEFAULT_MODEL, curate_with_ai
+from src.renderer import render_llms_full_txt, render_llms_txt
 
 if TYPE_CHECKING:
-    from src.mytypes import LLMSData
+    from apify import ProxyConfiguration
+
+    from src.mytypes import CrawlResult
 
 logger = logging.getLogger('apify')
 
-# section with less than this number of links will be moved to the index section
-SECTION_MIN_LINKS = 2
+LLMS_TXT_KEY = 'llms.txt'
+LLMS_FULL_TXT_KEY = 'llms-full.txt'
+TEXT_CONTENT_TYPE = 'text/plain; charset=utf-8'
+# time kept at the end of the run for building and saving the output
+FINISH_RESERVE = timedelta(seconds=30)
+AI_RESERVE = timedelta(seconds=120)
+
+
+def normalize_start_url(url: Any) -> str:
+    """Validates the start URL and adds the https:// scheme if it is missing."""
+    if not isinstance(url, str) or not url.strip():
+        raise ValueError('Missing "startUrl" in the input!')
+    url = url.strip()
+    if '://' not in url:
+        url = f'https://{url}'
+    if not url.startswith(('http://', 'https://')):
+        raise ValueError(f'"startUrl" must be an http(s) URL, got: {url}')
+    return url
+
+
+def explain_empty_result(result: CrawlResult) -> str:
+    """Explains why no pages besides the start page were found."""
+    if not result.pages:
+        return (
+            f'The start page {result.start_url} could not be loaded. Check that the URL is correct and publicly '
+            'accessible. If the site blocks bots, try enabling Apify Proxy in the input.'
+        )
+    if result.start_page_link_count == 0:
+        return (
+            f'The start page {result.start_url} contains no links in its HTML. The site is most likely rendered '
+            'with JavaScript in the browser (single-page app), which this Actor does not execute. If the site has '
+            'a pre-rendered documentation URL or a sitemap-based docs host, start from there.'
+        )
+    return (
+        f'No links on {result.loaded_url or result.start_url} point to pages under the start URL. '
+        'Try starting from a higher-level URL (e.g. the site root), increasing "maxCrawlDepth", '
+        'or loosening "excludeUrlGlobs".'
+    )
+
+
+async def get_proxy(proxy_input: dict | None) -> ProxyConfiguration | None:
+    """Creates the proxy configuration, runs without proxy when Apify Proxy is not available locally."""
+    try:
+        return await Actor.create_proxy_configuration(actor_proxy_input=proxy_input)
+    except Exception as exc:
+        if Actor.is_at_home():
+            raise
+        logger.warning(f'Apify Proxy is not available locally ({exc}), crawling without proxy.')
+        return None
 
 
 async def main() -> None:
-    """Main entry point for the llms.txt generator actor."""
+    """Main entry point of the /llms.txt generator Actor."""
     async with Actor:
-        actor_input = await Actor.get_input()
-        url = actor_input.get('startUrl')
-        if url is None:
-            msg = 'Missing "startUrl" attribute in input!'
-            raise ValueError(msg)
-        url_normalized = normalize_url(url)
+        actor_input = await Actor.get_input() or {}
+        started = time.monotonic()
+        start_url = normalize_start_url(actor_input.get('startUrl'))
+        max_crawl_depth = max(0, int(actor_input.get('maxCrawlDepth', 1)))
+        max_crawl_pages = max(1, int(actor_input.get('maxCrawlPages', 50)))
+        exclude_url_globs = [glob for glob in actor_input.get('excludeUrlGlobs') or [] if isinstance(glob, str)]
+        generate_full_txt = bool(actor_input.get('generateLlmsFullTxt', True))
+        link_to_markdown = bool(actor_input.get('linkToMarkdown', True))
+        use_ai = bool(actor_input.get('aiCuration', False))
+        ai_model = actor_input.get('aiModel') or DEFAULT_MODEL
 
-        max_crawl_depth = int(actor_input.get('maxCrawlDepth', 1))
-        max_crawl_pages = int(actor_input.get('maxCrawlPages', 50))
+        deadline = None
+        if Actor.is_at_home() and Actor.configuration.timeout_at:
+            deadline = Actor.configuration.timeout_at - FINISH_RESERVE - (AI_RESERVE if use_ai else timedelta(0))
 
-        proxy_config = await Actor.create_proxy_configuration()
-        results = await run_crawler(
-            url=url, max_crawl_depth=max_crawl_depth, max_crawl_pages=max_crawl_pages, proxy=proxy_config
+        await Actor.set_status_message(f'Crawling {start_url}...')
+        result = await run_crawler(
+            CrawlSettings(
+                start_url=start_url,
+                max_crawl_depth=max_crawl_depth,
+                max_crawl_pages=max_crawl_pages,
+                exclude_url_globs=exclude_url_globs,
+                collect_markdown=generate_full_txt,
+                proxy=await get_proxy(actor_input.get('proxyConfiguration')),
+                deadline=deadline,
+            )
         )
+        crawl_secs = time.monotonic() - started
 
-        hostname = urlparse(url).hostname
-        root_title = hostname
+        data, start_page, entries = build_llms_data(result, link_to_markdown=link_to_markdown)
+        if not entries:
+            message = explain_empty_result(result)
+            await Actor.fail(status_message=message)
+            return
 
-        data: LLMSData = {'title': root_title, 'description': None, 'details': None, 'sections': {}}
-        sections = data['sections']
+        if use_ai:
+            if not (token := Actor.configuration.token) or not Actor.is_at_home():
+                logger.warning('AI curation is available only when running on the Apify platform, skipping it.')
+            else:
+                await Actor.set_status_message(f'Crawled {len(result.pages)} pages, curating with AI...')
+                try:
+                    data = await curate_with_ai(
+                        data,
+                        entries,
+                        start_url=start_url,
+                        token=token,
+                        model=ai_model,
+                        link_to_markdown=link_to_markdown,
+                    )
+                except Exception as exc:
+                    logger.warning(f'AI curation failed, using the structure based on URL paths: {exc}')
 
-        is_dataset_empty = True
-        path_titles: dict[str, str] = {}
-        sections_to_fill_title = []
-        for item in results:
-            is_dataset_empty = False
-            if (item_url := item.get('url')) is None:
-                logger.warning('Missing "url" attribute in dataset item!')
-                continue
-            logger.info(f'Processing page: {item_url}')
-
-            description = item['description']
-            title = item['title']
-            path_titles[get_url_path(item_url)] = title
-
-            # handle input root url separately
-            is_root = normalize_url(item_url) == url_normalized
-            if is_root:
-                data['description'] = description if is_description_suitable(description) else None
-                continue
-
-            section_dir = get_url_path_dir(item_url)
-            section_title = path_titles.get(section_dir)
-            if section_dir not in sections:
-                sections[section_dir] = {'title': section_title or section_dir, 'links': []}
-                if section_title is None:
-                    sections_to_fill_title.append(section_dir)
-
-            sections[section_dir]['links'].append(
-                {
-                    'url': item_url,
-                    'title': title,
-                    'description': description if is_description_suitable(description) else None,
-                }
-            )
-
-        if is_dataset_empty:
-            msg = (
-                'No pages were crawled successfully!'
-                ' Please check the "apify/website-content-crawler" actor run for more details.'
-            )
-            raise RuntimeError(msg)
-
-        for section_dir in sections_to_fill_title:
-            sections[section_dir]['title'] = get_section_dir_title(section_dir, path_titles)
-
-        # move sections with less than SECTION_MIN_LINKS to the root
-        clean_llms_data(data, section_min_links=SECTION_MIN_LINKS)
-        output = render_llms_txt(data)
-
-        # save into kv-store as a file to be able to download it
         store = await Actor.open_key_value_store()
-        await store.set_value('llms.txt', output)
-        logger.info('Saved the "llms.txt" file into the key-value store!')
+        llms_txt = render_llms_txt(data)
+        await store.set_value(LLMS_TXT_KEY, llms_txt, content_type=TEXT_CONTENT_TYPE)
+        output: dict[str, Any] = {
+            'url': start_url,
+            LLMS_TXT_KEY: llms_txt,
+            'llmsTxtUrl': await store.get_public_url(LLMS_TXT_KEY),
+            'llmsFullTxtUrl': None,
+            'pagesCrawled': len(result.pages),
+            'linksInLlmsTxt': sum(len(section['links']) for section in data['sections']),
+            'existingLlmsTxtUrl': result.existing_llms_txt_url,
+        }
 
-        await Actor.push_data({'llms.txt': output})
-        logger.info('Pushed the "llms.txt" file to the dataset!')
+        if generate_full_txt:
+            ordered_entries = entries_in_llms_order(data, entries, link_to_markdown=link_to_markdown)
+            full_txt = render_llms_full_txt(data, start_page['markdown'] if start_page else None, ordered_entries)
+            await store.set_value(LLMS_FULL_TXT_KEY, full_txt, content_type=TEXT_CONTENT_TYPE)
+            output['llmsFullTxtUrl'] = await store.get_public_url(LLMS_FULL_TXT_KEY)
+            logger.info(f'Saved "{LLMS_FULL_TXT_KEY}" ({len(full_txt):,} characters).')
 
-        await Actor.set_status_message('Finished! Saved the "llms.txt" file into the key-value store and dataset...')
+        await Actor.push_data(output)
+
+        message = (
+            f'Generated llms.txt with {output["linksInLlmsTxt"]} links from {len(result.pages)} crawled pages '
+            f'in {crawl_secs:.0f} s.'
+        )
+        if result.existing_llms_txt_url:
+            message += f' Note: the site already publishes {result.existing_llms_txt_url}.'
+        logger.info(message)
+        await Actor.set_status_message(message)
