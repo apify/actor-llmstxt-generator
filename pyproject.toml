@@ -7,6 +7,8 @@ dependencies = [
     "apify>=3.0.0,<4.0.0",
     "beautifulsoup4<5.0.0,>=4.12.3",
     "crawlee[beautifulsoup]>=1.6.3,<2.0.0",
+    "impit>=0.9",
+    "markdownify>=0.14,<2",
 ]
 name = "apify-llmstxt-generator"
 version = "0.2.0"

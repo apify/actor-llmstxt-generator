@@ -1,0 +1,24 @@
+{
+  "actorOutputSchemaVersion": 1,
+  "title": "Output of the /llms.txt Generator",
+  "properties": {
+    "llmsTxt": {
+      "type": "string",
+      "title": "llms.txt",
+      "description": "The generated llms.txt file.",
+      "template": "{{links.apiDefaultKeyValueStoreUrl}}/records/llms.txt"
+    },
+    "llmsFullTxt": {
+      "type": "string",
+      "title": "llms-full.txt",
+      "description": "Full content of all pages as Markdown (only when \"Generate llms-full.txt\" is enabled).",
+      "template": "{{links.apiDefaultKeyValueStoreUrl}}/records/llms-full.txt"
+    },
+    "overview": {
+      "type": "string",
+      "title": "Overview",
+      "description": "The llms.txt content with statistics of the run.",
+      "template": "{{links.apiDefaultDatasetUrl}}/items"
+    }
+  }
+}

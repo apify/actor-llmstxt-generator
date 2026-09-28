@@ -1,18 +1,46 @@
 {
   "actorSpecification": 1,
+  "fields": {
+    "type": "object",
+    "properties": {
+      "url": { "type": "string", "description": "The start URL." },
+      "llms.txt": { "type": "string", "description": "Content of the generated llms.txt file." },
+      "llmsTxtUrl": { "type": "string", "description": "Download URL of llms.txt." },
+      "llmsFullTxtUrl": { "type": ["string", "null"], "description": "Download URL of llms-full.txt." },
+      "pagesCrawled": { "type": "integer", "description": "Number of crawled pages." },
+      "linksInLlmsTxt": { "type": "integer", "description": "Number of links in llms.txt." },
+      "existingLlmsTxtUrl": {
+        "type": ["string", "null"],
+        "description": "URL of an llms.txt the site already publishes, if found."
+      },
+      "crawlStoppedEarly": {
+        "type": "boolean",
+        "description": "The crawl was stopped to finish before the run timeout, so pages within the page limit may be missing."
+      },
+      "pagesLeftOutOfLlmsFullTxt": {
+        "type": "integer",
+        "description": "Pages listed in llms.txt but left out of llms-full.txt because it reached the size limit of the run."
+      }
+    }
+  },
   "views": {
     "overview": {
       "title": "Overview",
       "transformation": {
-        "fields": ["llms.txt"]
+        "fields": ["url", "llmsTxtUrl", "llmsFullTxtUrl", "pagesCrawled", "linksInLlmsTxt", "existingLlmsTxtUrl", "crawlStoppedEarly", "pagesLeftOutOfLlmsFullTxt", "llms.txt"]
       },
       "display": {
         "component": "table",
         "properties": {
-          "llms.txt": {
-            "label": "llms.txt",
-            "format": "text"
-          }
+          "url": { "label": "Start URL", "format": "link" },
+          "llmsTxtUrl": { "label": "llms.txt", "format": "link" },
+          "llmsFullTxtUrl": { "label": "llms-full.txt", "format": "link" },
+          "pagesCrawled": { "label": "Pages crawled", "format": "number" },
+          "linksInLlmsTxt": { "label": "Links", "format": "number" },
+          "existingLlmsTxtUrl": { "label": "Existing llms.txt on the site", "format": "link" },
+          "crawlStoppedEarly": { "label": "Crawl stopped early", "format": "boolean" },
+          "pagesLeftOutOfLlmsFullTxt": { "label": "Pages left out of llms-full.txt", "format": "number" },
+          "llms.txt": { "label": "llms.txt content", "format": "text" }
         }
       }
     }

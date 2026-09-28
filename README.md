@@ -1,103 +1,71 @@
-# /llms.txt Generator 🚀📄
-
+# 🗂️ /llms.txt Generator
 
 [![Agent Actor Inspector](https://apify.com/actor-badge?actor=jakub.kopecky/llmstxt-generator)](https://apify.com/jakub.kopecky/llmstxt-generator)
 [![GitHub Repo stars](https://img.shields.io/github/stars/apify/actor-llmstxt-generator)](https://github.com/apify/actor-llmstxt-generator/stargazers)
 
-The **/llms.txt Generator** is an Apify Actor that helps you extract essential website content and generate an [/llms.txt](https://llmstxt.org/) file, making your content ready for AI-powered applications such as fine-tuning, indexing, and integrating large language models (LLMs) like GPT-4, ChatGPT, or LLaMA. This Actor leverages the [Website Content Crawler](https://apify.com/apify/website-content-crawler) actor to perform deep crawls and extract text content from web pages, ensuring comprehensive data collection. The Website Content Crawler is particularly useful because it supports output in multiple formats, including markdown, which is used by the **/llms.txt**.
+Turn any documentation site into an [llms.txt](https://llmstxt.org/) file in a few seconds. Paste a URL and it crawls the site, curates the pages, and writes a Markdown index — plus an optional **llms-full.txt** with the full content of every page — that AI coding agents can read instead of your whole site.
 
-## 🌟 What is /llms.txt?
+## 🌟 What is llms.txt?
 
-The **/llms.txt** format is a markdown-based standard for providing AI-friendly content. It contains:
+A Markdown file that tells AI tools where a website's useful content is: a title, a one-line summary, and sections of links with short descriptions. Coding agents and AI IDEs (Claude Code, Cursor, Windsurf, GitHub Copilot) read it when pointed at a documentation site. There's no evidence search engines or chat assistants use it for ranking or citations — treat it as context for agents, not SEO.
 
-- **Brief background information** and guidance.
-- **Links to additional resources** in markdown format.
-- **AI-focused** structure to help coders, researchers, and AI models easily access and use website content.
+## ✨ What it does
 
-Proposed structure:
+- Crawls from your start URL, following redirects, ordered the way the site's own navigation lists pages
+- Cleans up titles and descriptions, and drops duplicate pages
+- Groups pages into sections, with a spec-compliant `Optional` section for changelogs, blog posts and old doc versions
+- Links to a page's Markdown version when the site publishes one, so agents read it faster and cheaper
+- Can also write `llms-full.txt` with the full text of every page
+- Can hand off to an AI model to organize sections by topic instead of URL structure
+- Tells you if the site already publishes its own `llms.txt`
 
-```
-# Title
+## 🚀 How to use it
 
-> Optional description
+1. Enter the **Website address**.
+2. Click **Start**. Download `llms.txt` (and `llms-full.txt`) from the **Output** tab when it finishes.
 
-Optional details go here
+Everything else lives under **Advanced settings**, with defaults tuned for most documentation sites: up to 100 pages, `llms-full.txt` on, AI organizing off.
 
-## Section name
+### Output example
 
-- [Link title](https://link_url): Optional link details
+This is the `llms.txt` generated for `https://docs.apify.com/cli/docs`, shortened:
+
+```markdown
+# Apify CLI overview | CLI | Apify Documentation
+
+> An introduction to Apify CLI, a command-line interface for creating, developing, building, and running Apify Actors and managing the Apify cloud platform.
+
+## Docs
+
+- [Quick start](https://docs.apify.com/cli/docs/quick-start.md): Learn how to create, run, and deploy Actors using Apify CLI.
+- [Installation](https://docs.apify.com/cli/docs/installation.md): Learn how to install Apify CLI using installation scripts, Homebrew, or NPM.
 
 ## Optional
 
-- [Link title](https://link_url)
+- [Changelog](https://docs.apify.com/cli/docs/changelog.md): All notable changes to this project will be documented in this file.
 ```
 
-By adding an **/llms.txt** file to your website, you make it easy for AI systems to understand, index, and use your content effectively.
+The run also saves a dataset item with links to both files, the crawl stats, and the site's existing `llms.txt` URL if it has one.
 
----
+## 🤖 AI curation (optional)
 
-## 🎯 Features of /llms.txt Generator
+Turn on **Organize with AI** to have an LLM group pages by what a developer wants to do ("Getting started", "API reference") instead of URL structure, and write a real summary. It scales to large sites by batching the request, costs about $0.001 per 100 pages on a paid Apify plan (10x on the free plan), and never pushes the run past its timeout — if it fails or runs out of time, you still get the regular URL-based file.
 
-Our Actor is designed to simplify and automate the creation of **/llms.txt** files. Here are its key features:
+## ⚠️ Limitations
 
-- **Deep website crawling**: Extracts content from multi-level websites using the powerful [Crawlee](https://crawlee.dev) library and the [Website Content Crawler](https://apify.com/apify/website-content-crawler) Actor.
-- **Content extraction**: Retrieves key metadata such as titles, descriptions, and URLs for seamless integration.
-- **File generation**: Saves the output in the standardized **/llms.txt** format.
-- **Downloadable output**: The **/llms.txt** file can be downloaded from the **key-value store** in the storage section of the Actor run details.
-- **Resource management**: Limits the crawler Actor to 4 GB of memory to ensure compatibility with the free tier, which has an 8 GB limit. Note that this may slow down the crawling process.
+- **No JavaScript rendering.** Sites fully rendered in the browser (e.g. Docsify) fail with a clear explanation instead of an empty file.
+- **Large sites take longer, but always finish.** Bigger crawls (up to 5,000 pages) automatically get more memory; if a run is about to hit its timeout, it saves whatever it has and says so.
+- **Descriptions come from the site.** Pages without a meta description get a title only.
+- **Treat the output as a first draft.** Review it, trim what your users don't need, before publishing at `https://your-site.com/llms.txt`.
 
----
+## 💡 Tips
 
-## 🚀 How it works
+- Start from the docs root, not the marketing homepage — documentation pages have better titles and descriptions.
+- Use **Skip pages** to leave out old versions, translations or generated API pages.
+- Only enable the proxy if the site blocks the crawler — most documentation sites don't need it, and skipping it is faster.
 
-1. **Input**: Provide the start URL of the website to crawl.
-2. **Configuration**: Set the maximum crawl depth and other options (optional).
-3. **Output**: The Actor generates a structured **/llms.txt** file with extracted content, ready for AI applications.
+## 📖 Resources
 
-### Input example
-
-```json
-{
-  "startUrl": "https://docs.apify.com",
-  "maxCrawlDepth": 1
-}
-```
-
-### Output example (/llms.txt)
-
-```
-# docs.apify.com
-
-## Index
-
-- [Home | Platform | Apify Documentation](https://docs.apify.com/platform): Apify is your one-stop shop for web scraping, data extraction, and RPA. Automate anything you can do manually in a browser.
-- [Web Scraping Academy | Academy | Apify Documentation](https://docs.apify.com/academy): Learn everything about web scraping and automation with our free courses that will turn you into an expert scraper developer.
-- [Apify Documentation](https://docs.apify.com/api)
-- [API scraping | Academy | Apify Documentation](https://docs.apify.com/academy/api-scraping): Learn all about how the professionals scrape various types of APIs with various configurations, parameters, and requirements.
-- [API client for JavaScript | Apify Documentation](https://docs.apify.com/api/client/js/)
-- [Apify API | Apify Documentation](https://docs.apify.com/api/v2)
-- [API client for Python | Apify Documentation](https://docs.apify.com/api/client/python/)
-...
-
-```
-
-
----
-
-## ✨ Why use /llms.txt Generator?
-
-- **Save time**: Automates the tedious process of extracting, formatting, and organizing web content.
-- **Boost AI performance**: Provides clean, structured data for LLMs and AI-powered tools.
-- **Future-proof**: Follows a standardized format that’s gaining adoption in the AI community.
-- **User-friendly**: Easy integration into customer-facing products, allowing users to generate **/llms.txt** files effortlessly.
-
-## 📖 Learn more
-
-- [Apify platform](https://apify.com)
-- [Apify SDK documentation](https://docs.apify.com/sdk/python)
-- [Crawlee library](https://crawlee.dev)
-- [/llms.txt proposal](https://llmstxt.org/)
-
----
-
-Start generating **/llms.txt** files today and empower your AI applications with clean, structured, and AI-friendly data! 🌐🤖
+- [llms.txt proposal](https://llmstxt.org/)
+- [Source code on GitHub](https://github.com/apify/actor-llmstxt-generator)
+- [Crawlee for Python](https://crawlee.dev/python)

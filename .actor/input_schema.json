@@ -1,28 +1,89 @@
 {
   "title": "Generate /llms.txt for the given site",
+  "description": "Paste the address of a documentation site and click Start. The defaults work for most sites.",
   "type": "object",
   "schemaVersion": 1,
   "properties": {
     "startUrl": {
-      "title": "Start URL",
+      "title": "Website address",
       "type": "string",
-      "description": "The URL from which the crawler will start to generate the /llms.txt file.",
+      "description": "Where your documentation starts, for example `https://docs.apify.com/cli/docs`. Only pages under this address are included.",
       "editor": "textfield",
-      "prefill": "https://docs.apify.com/cli/docs"
-    },
-    "maxCrawlDepth": {
-      "title": "Max crawl depth",
-      "type": "integer",
-      "description": "The maximum depth of the crawl. Default is 1.",
-      "editor": "number",
-      "default": 1
+      "prefill": "https://docs.apify.com/cli/docs",
+      "pattern": "^\\s*(https?://)?[^\\s/?#.]+(\\.[^\\s/?#.]+)+(:\\d+)?([/?#]\\S*)?\\s*$",
+      "errorMessage": {
+        "pattern": "Enter a website address, for example https://docs.example.com"
+      }
     },
     "maxCrawlPages": {
-      "title": "Max crawl pages",
+      "title": "Maximum number of pages",
       "type": "integer",
-      "description": "The maximum number of pages to crawl. Default is 50.",
+      "description": "The most pages to include. Pages are picked in the order the site's menus list them, so the most important ones come first. Up to 300 pages, the run uses the least memory and takes about 3-10 minutes per 100 pages; larger crawls automatically get more memory, which also makes them faster.",
       "editor": "number",
-      "default": 50
+      "unit": "pages",
+      "minimum": 5,
+      "maximum": 5000,
+      "default": 100,
+      "sectionCaption": "Advanced settings",
+      "sectionDescription": "Optional. The defaults work well for most documentation sites."
+    },
+    "maxCrawlDepth": {
+      "title": "How many clicks away from the start page",
+      "type": "integer",
+      "description": "`1` includes the pages linked from the start page, which on most documentation sites is the whole menu. Use `2` or more if the menu doesn't list every page.",
+      "editor": "number",
+      "unit": "clicks",
+      "minimum": 1,
+      "maximum": 10,
+      "default": 1
+    },
+    "excludeUrlGlobs": {
+      "title": "Skip pages",
+      "type": "array",
+      "description": "Leave out pages whose address matches one of these patterns. `*` matches anything, for example `*/blog/*` skips the blog and `*/docs/1.*` skips old documentation versions.",
+      "editor": "stringList",
+      "placeholderValue": "*/blog/*",
+      "default": []
+    },
+    "generateLlmsFullTxt": {
+      "title": "Also create llms-full.txt with the full text of every page",
+      "type": "boolean",
+      "description": "One file with the content of all pages, for AI tools that read the whole documentation at once.",
+      "groupCaption": "Output",
+      "default": true
+    },
+    "linkToMarkdown": {
+      "title": "Link to Markdown versions of pages when the site has them",
+      "type": "boolean",
+      "description": "AI tools read Markdown faster and with fewer tokens than web pages. Pages without a Markdown version are linked as usual.",
+      "default": true
+    },
+    "aiCuration": {
+      "title": "Organize with AI",
+      "type": "boolean",
+      "description": "An AI model groups the pages by topic (such as \"Getting started\" or \"API reference\") and writes the summary, instead of following the site's URL structure. Costs about $0.001 per 100 pages on paid Apify plans (10x on the free plan), billed to your Apify account. If it fails, you still get the regular file.",
+      "default": false
+    },
+    "aiModel": {
+      "title": "AI model",
+      "type": "string",
+      "description": "Only used with \"Organize with AI\". All options are fast, low-cost models tested with this Actor.",
+      "editor": "select",
+      "enum": ["qwen/qwen3-30b-a3b-instruct-2507", "qwen/qwen3-235b-a22b-2507", "openai/gpt-4.1-mini"],
+      "enumTitles": [
+        "Qwen3 30B (recommended, cheapest)",
+        "Qwen3 235B (similar price, larger model)",
+        "GPT-4.1 mini (about 4x the price)"
+      ],
+      "default": "qwen/qwen3-30b-a3b-instruct-2507"
+    },
+    "proxyConfiguration": {
+      "title": "Proxy",
+      "type": "object",
+      "description": "Only needed if the site blocks the crawler. Most documentation sites work without a proxy, which is also faster.",
+      "editor": "proxy",
+      "default": { "useApifyProxy": false },
+      "prefill": { "useApifyProxy": false }
     }
   },
   "required": ["startUrl"]
