@@ -47,15 +47,11 @@ DEFAULT_MODEL = 'qwen/qwen3-30b-a3b-instruct-2507'
 MAX_RESPONSE_TOKENS = 2000
 MAX_SECTIONS = 10
 # Number of pages placed per model call once there are too many for one request (see `_curate_in_batches`).
-# A naive "~2 tokens per index" estimate is NOT safe in practice: measured live against 604 real pages at
-# BATCH_SIZE=150, the model used 1067-2000+ completion tokens per batch -- one batch was truncated exactly at
-# the MAX_RESPONSE_TOKENS cap, because models don't reliably emit compact JSON even when asked to, and because
-# section count/title verbosity varies with page content, not just page count. At BATCH_SIZE=60, re-verified
-# live against 599 real pages (10 concurrent batches), completion tokens per batch were 197-404 -- a 5-10x
-# margin below the cap. Batches run concurrently, so wall-clock time does not scale with the number of pages.
+# Models don't reliably emit compact JSON even when asked to, so this needs a real margin below the response
+# token cap rather than a token-per-index estimate; 60 leaves a 5-10x margin in practice. Batches run
+# concurrently, so wall-clock time does not scale with the number of pages.
 BATCH_SIZE = 60
-# Batches in flight at once. 10 concurrent batches were verified live; more would risk the proxy's rate limits,
-# and one failed batch fails the whole AI step.
+# Batches in flight at once. More would risk the proxy's rate limits, and one failed batch fails the whole step.
 MAX_CONCURRENT_CALLS = 10
 # Timeout of a single model call, lowered when the run has less time left (see `_Budget`).
 CALL_TIMEOUT_SECS = 120.0
