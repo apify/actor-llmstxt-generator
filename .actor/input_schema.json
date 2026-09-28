@@ -57,9 +57,9 @@
     "aiModel": {
       "title": "AI model",
       "type": "string",
-      "description": "OpenRouter model ID used for AI curation.",
+      "description": "OpenRouter model ID used for AI curation. Prefer instruct/non-reasoning models: a reasoning model can spend the 2,048-token response budget on hidden reasoning before writing the JSON and get cut off.",
       "editor": "textfield",
-      "default": "openai/gpt-4.1-mini"
+      "default": "qwen/qwen3-30b-a3b-instruct-2507"
     },
     "proxyConfiguration": {
       "title": "Proxy configuration",

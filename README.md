@@ -67,11 +67,12 @@ The run also saves a dataset item with links to both files, the number of crawle
 
 ## AI curation
 
-Without AI, sections follow the site's URL structure. That works well for most documentation, but a large site can end up with one long section. With **Curate with AI** turned on, the Actor sends the page titles, paths and descriptions to an LLM through the [OpenRouter Actor](https://apify.com/apify/openrouter). The LLM returns the section structure, the summary and the list of secondary pages. It only rearranges the pages the Actor found and cannot add new links.
+Without AI, sections follow the site's URL structure. That works well for most documentation, but a large site can end up with one long section. With **Curate with AI** turned on, the Actor sends the page titles, paths and descriptions to an LLM through the [OpenRouter Actor](https://apify.com/apify/openrouter). The LLM returns the section structure, the summary and the list of secondary pages. It only rearranges the pages the Actor found and cannot add new links. Pages already recognized as secondary by URL alone (changelogs, blog posts, old documentation versions, ...) are never sent to the model; they go straight to `Optional`.
 
-- **Cost:** The LLM usage is billed to your Apify account at OpenRouter prices. For about 50 pages on a paid plan, this is usually well under $0.01 per run. Free plans pay more per token.
-- **Model:** The default is `openai/gpt-4.1-mini`. You can use any [OpenRouter model ID](https://openrouter.ai/models).
-- **Fallback:** If the AI call fails, the Actor keeps the structure based on URL paths, so you still get a file.
+- **Scales to large sites.** The OpenRouter proxy caps every response at 2,048 tokens, so a single request can't safely place thousands of pages at once. Above 150 pages, the Actor splits them into concurrent batches, then makes one small extra call to merge the section names each batch proposed into one consistent list. Small and medium sites still use a single call.
+- **Cost:** The LLM usage is billed to your Apify account at OpenRouter prices, plus a 10x markup for Apify's free plan (paid plans pay the raw OpenRouter price). For about 50 pages, this is usually a fraction of a cent on a paid plan; large, batched sites cost more roughly in proportion to their page count.
+- **Model:** The default is `qwen/qwen3-30b-a3b-instruct-2507`, an open-weight (Apache 2.0) model chosen for cheap, reliable, non-reasoning JSON output. You can use any [OpenRouter model ID](https://openrouter.ai/models) — prefer instruct/non-reasoning models, since a reasoning model can spend the 2,048-token response budget on hidden reasoning before writing the JSON and get cut off.
+- **Fallback:** If any AI call fails, or its response doesn't parse, the Actor keeps the structure based on URL paths, so you still get a file.
 
 AI curation works only when the Actor runs on the Apify platform.
 
