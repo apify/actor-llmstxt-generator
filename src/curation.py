@@ -6,8 +6,11 @@ to the Optional section directly. This keeps the model's job to genuinely ambigu
 small even on huge sites.
 
 The remaining pages are placed in a single call for small/medium sites (`curate_with_ai`), or split into
-concurrent batches for large ones (`_curate_in_batches`, see `BATCH_SIZE`), with a final small call to merge
-the section names each batch proposed into one consistent, ordered list and write the file's title/summary.
+concurrent batches for large ones (`_curate_in_batches`, see `BATCH_SIZE`). The sections the batches proposed
+are then merged in two small steps: one call picks the final, ordered list of sections (and writes the file's
+title/summary), and concurrent calls assign each proposed section to one of them. Asking the model to classify
+each proposed section is what keeps the merge accurate on huge sites: with hundreds of proposed sections, a
+single call asked to list which of them go where lumped most of a 5,000-page site into one section.
 Both paths converge on the same `apply_curation` call, so they share the same validation, deduplication and
 fallback-to-Optional behavior.
 
@@ -60,9 +63,11 @@ CALL_TIMEOUT_SECS = 120.0
 MIN_SPLIT_PAGES = 8
 # A call is not started with less time left than this, it would most likely not finish anyway.
 MIN_CALL_SECS = 10.0
-# Section titles sent to the merge call. The merge response lists each of them by index (1-3 tokens each), so even
-# this many stay far below the response cap. Labels beyond it (the ones with the fewest pages) keep their own title.
-MAX_MERGE_LABELS = 150
+# Distinct proposed section titles shown to the call that picks the final sections (its answer is short, this only
+# bounds the prompt). A 5,000-page site produced ~300.
+MAX_MERGE_TITLES = 400
+# Proposed sections assigned to the final ones per call. The answer is ~5 tokens per section.
+ASSIGN_CHUNK_SIZE = 40
 _JSON_FENCE_RE = re.compile(r'^```(?:json)?\s*|\s*```$')
 
 SYSTEM_PROMPT = """You curate llms.txt files (https://llmstxt.org): short Markdown indexes that help AI coding \
@@ -98,34 +103,44 @@ subset, not the whole site. Pages (index | title | path | description):
 Organize ONLY these pages into groups. Return JSON with these keys:
 - "sections": 1-{max_sections} sections grouped by what a developer wants to do (e.g. "Getting started", \
 "Guides", "API reference"). Each is {{"title": str, "pages": [page indexes]}}. Put the most important \
-section and pages first. Use short, generic section titles, since they will be merged with sections \
-proposed for other batches of the same site.
+section and pages first. Use short titles that say what the pages are about (e.g. "CSS properties" rather \
+than "Reference"), since they will be merged with sections proposed for other batches of the same site.
 - "optional": page indexes that are secondary (changelogs, blog posts, legal pages, old versions, marketing).
 - "exclude": page indexes that are useless for an AI agent (duplicates, login or error pages, tag listings).
 Every index from 0 to {max_index} must appear exactly once in "sections", "optional" or "exclude"."""
 
 MERGE_SYSTEM_PROMPT = """You are finishing an llms.txt file (https://llmstxt.org) whose pages were grouped in \
-separate batches because there were too many to place in one request. Merge the section names proposed for \
-each batch into one consistent, ordered list, and write the file's title and summary. Use only the \
-information you are given, never invent facts. Answer with a single minified JSON object and nothing else: \
-no markdown code fences, no whitespace or line breaks other than the single spaces required inside strings."""
+separate batches because there were too many to place in one request. Use only the information you are given, \
+never invent facts. Answer with a single minified JSON object and nothing else: no markdown code fences, no \
+whitespace or line breaks other than the single spaces required inside strings."""
 
 MERGE_USER_PROMPT = """Website: {site_title}
 Start URL: {start_url}
 Site description: {site_description}
 
-Section titles proposed for different batches of this site's pages (index | title | number of pages). The same \
-real section may have been named slightly differently in different batches:
-{labels}
+Section titles proposed for different batches of this site's pages, with the number of pages (the same real \
+section may have been named differently in different batches):
+{titles}
 
 Return JSON with these keys:
 - "title": the name of the project or product the pages document, short, without taglines (e.g. "Apify CLI").
 - "summary": one factual sentence (max 200 characters) saying what it is and what the pages cover. No marketing.
 - "details": 1-3 short factual sentences with context an AI agent needs to use these pages well, or "".
-- "sections": the final list of at most {max_sections} sections, most important first. Each is \
-{{"title": str, "labels": [indexes of the proposed titles merged into it]}}. Merge equivalent proposed titles \
-(e.g. "Getting Started" and "Quickstart" become one section).
-Every proposed title index from 0 to {max_index} must appear in exactly one section."""
+- "sections": the final list of 2-{max_sections} section titles (strings) for the whole site, most important \
+first. Together they must cover all the proposed sections, merging equivalent ones (e.g. "Getting Started" and \
+"Quickstart"), and should follow the site's main topics, sized so that no section holds most of the pages."""
+
+ASSIGN_USER_PROMPT = """Website: {site_title}
+
+Final sections of the site's llms.txt file (number | title):
+{sections}
+
+Sections proposed for batches of the site's pages (index | proposed title | pages | example page paths):
+{labels}
+
+Assign every proposed section to the final section its pages belong to. Return JSON with one key:
+- "assign": an object mapping each proposed section index (as a string, "0" to "{max_index}") to a final \
+section number, e.g. {{"0": 2, "1": 0}}."""
 
 
 def _page_lines(entries: list[PageEntry]) -> str:
@@ -160,14 +175,25 @@ def _build_batch_prompt(data: LLMSData, chunk: list[PageEntry], part: int, total
     )
 
 
-def _build_merge_prompt(data: LLMSData, start_url: str, labels: list[tuple[str, int]]) -> str:
-    """Builds the user prompt for the final call that merges batches' section titles into one list."""
+def _build_merge_prompt(data: LLMSData, start_url: str, titles: list[tuple[str, int]]) -> str:
+    """Builds the prompt of the call that picks the final sections from the titles the batches proposed."""
     return MERGE_USER_PROMPT.format(
         site_title=data['title'],
         start_url=start_url,
         site_description=data['description'] or '-',
-        labels='\n'.join(f'{index} | {label} | {count}' for index, (label, count) in enumerate(labels)),
+        titles='\n'.join(f'- {title} ({count} pages)' for title, count in titles),
         max_sections=MAX_SECTIONS,
+    )
+
+
+def _build_assign_prompt(data: LLMSData, final_titles: list[str], labels: list[tuple[str, int, list[str]]]) -> str:
+    """Builds the prompt of a call that assigns proposed sections (title, page count, example paths) to final ones."""
+    return ASSIGN_USER_PROMPT.format(
+        site_title=data['title'],
+        sections='\n'.join(f'{number} | {title}' for number, title in enumerate(final_titles)),
+        labels='\n'.join(
+            f'{index} | {title} | {count} | {", ".join(paths)}' for index, (title, count, paths) in enumerate(labels)
+        ),
         max_index=len(labels) - 1,
     )
 
@@ -366,6 +392,37 @@ def _concat_placements(
     }
 
 
+def _assignment_items(answer: dict[str, Any]) -> list[tuple[int | None, Any]]:
+    """Returns (proposed section index, value) pairs from an assignment answer, tolerating common shapes.
+
+    Expected is `{"assign": {"0": 2, ...}}`; also accepted are the mapping at the top level and a list in order.
+    """
+    raw = answer.get('assign', answer)
+    if isinstance(raw, list):
+        return list(enumerate(raw))
+    if not isinstance(raw, dict):
+        return []
+    items: list[tuple[int | None, Any]] = []
+    for key, value in raw.items():
+        key_text = str(key).strip()
+        items.append((int(key_text) if key_text.isdigit() else None, value))
+    return items
+
+
+def _final_section_number(value: Any, final_titles: list[str]) -> int | None:
+    """Reads a final section from an assignment value: its number (possibly as a string) or its title."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, str) and value.strip().isdigit():
+        value = int(value.strip())
+    if isinstance(value, int):
+        return value if 0 <= value < len(final_titles) else None
+    if isinstance(value, str):
+        lowered = [title.lower() for title in final_titles]
+        return lowered.index(value.strip().lower()) if value.strip().lower() in lowered else None
+    return None
+
+
 async def _curate_in_batches(
     data: LLMSData,
     main_entries: list[PageEntry],
@@ -427,56 +484,82 @@ async def _curate_in_batches(
     if not placed:
         raise ValueError('Model returned no usable sections in any batch')
 
-    # merge titles that differ only by case/whitespace before asking the model, keyed by the lowercased title
-    label_pages: dict[str, int] = {}
-    label_display: dict[str, str] = {}
+    # step 1: pick the final sections from the distinct proposed titles (case-insensitive)
+    title_pages: dict[str, int] = {}
+    title_display: dict[str, str] = {}
     for label, indexes in placed:
-        label_display.setdefault(label.lower(), label)
-        label_pages[label.lower()] = label_pages.get(label.lower(), 0) + len(indexes)
-    # the biggest labels, in the order they were first proposed (batches follow the navigation order)
-    kept = set(sorted(label_pages, key=lambda key: -label_pages[key])[:MAX_MERGE_LABELS])
-    merge_labels = [key for key in label_display if key in kept]
-    if len(label_pages) > len(merge_labels):
-        logger.info(f'AI curation: merging the {len(merge_labels)} biggest of {len(label_pages)} proposed sections.')
-
-    while True:
-        merge_payload = _chat_payload(
-            model,
-            _build_merge_prompt(data, start_url, [(label_display[key], label_pages[key]) for key in merge_labels]),
-            system=MERGE_SYSTEM_PROMPT,
+        title_display.setdefault(label.lower(), label)
+        title_pages[label.lower()] = title_pages.get(label.lower(), 0) + len(indexes)
+    shown = set(sorted(title_pages, key=lambda key: -title_pages[key])[:MAX_MERGE_TITLES])
+    merge_payload = _chat_payload(
+        model,
+        _build_merge_prompt(
+            data, start_url, [(title_display[key], title_pages[key]) for key in title_display if key in shown]
+        ),
+        system=MERGE_SYSTEM_PROMPT,
+    )
+    merge_result = await _call_with_retry(merge_payload, token, budget, log_label='section merge')
+    raw_titles = merge_result.get('sections')
+    final_titles = list(
+        dict.fromkeys(
+            title.strip()
+            for title in (raw_titles if isinstance(raw_titles, list) else [])
+            if isinstance(title, str) and title.strip() and title.strip().lower() != OPTIONAL_SECTION_TITLE.lower()
         )
+    )[:MAX_SECTIONS]
+    if not final_titles:
+        raise ValueError('Model returned no final sections')
+
+    # step 2: assign every proposed section (per batch, with example paths for context) to a final section
+    labels = [
+        (label, len(indexes), [urlparse(main_entries[index].page['url']).path or '/' for index in indexes[:2]])
+        for label, indexes in placed
+    ]
+    assigned: dict[int, int] = {}
+
+    async def assign(start: int, chunk: list[tuple[str, int, list[str]]], label: str) -> None:
+        payload = _chat_payload(model, _build_assign_prompt(data, final_titles, chunk), system=MERGE_SYSTEM_PROMPT)
         try:
-            merge_result = await _call_with_retry(merge_payload, token, budget, log_label='section merge')
-            break
+            async with semaphore:
+                answer = await _call_with_retry(payload, token, budget, log_label=label)
         except _UnusableResponseError as exc:
-            if len(merge_labels) <= MAX_SECTIONS:
+            if len(chunk) < 2 * MIN_SPLIT_PAGES:
                 raise
-            # labels left out keep their own titles, like the ones beyond MAX_MERGE_LABELS
-            kept = set(sorted(merge_labels, key=lambda key: -label_pages[key])[: len(merge_labels) // 2])
-            merge_labels = [key for key in merge_labels if key in kept]
-            logger.warning(f'AI curation (section merge): {exc}. Retrying with the {len(merge_labels)} biggest.')
+            logger.warning(f'AI curation ({label}): {exc}. Splitting the request in two.')
+            half = len(chunk) // 2
+            await asyncio.gather(
+                assign(start, chunk[:half], f'{label}a'), assign(start + half, chunk[half:], f'{label}b')
+            )
+            return
+        count = 0
+        for key, value in _assignment_items(answer):
+            number = _final_section_number(value, final_titles)
+            if isinstance(key, int) and 0 <= key < len(chunk) and number is not None:
+                count += int(assigned.setdefault(start + key, number) == number)
+        if count < len(chunk) / 2:
+            logger.warning(f'AI curation ({label}): only {count} of {len(chunk)} assigned, answer: {str(answer)[:300]}')
 
-    # lowercased proposed title -> final section title, in the final order
-    title_of: dict[str, str] = {}
-    order: list[str] = []
-    raw_sections = merge_result.get('sections')
-    for raw_section in raw_sections if isinstance(raw_sections, list) else []:
-        if not isinstance(raw_section, dict) or not isinstance(title := raw_section.get('title'), str):
-            continue
-        if not title.strip():
-            continue
-        for index in _indexes(raw_section.get('labels'), len(merge_labels)):
-            title_of.setdefault(merge_labels[index], title.strip())
-        if title.strip() not in order:
-            order.append(title.strip())
+    chunk_starts = range(0, len(labels), ASSIGN_CHUNK_SIZE)
+    await asyncio.gather(
+        *(
+            assign(start, labels[start : start + ASSIGN_CHUNK_SIZE], f'section assignment {n + 1}/{len(chunk_starts)}')
+            for n, start in enumerate(chunk_starts)
+        )
+    )
 
+    by_lower = {title.lower(): title for title in final_titles}
+    order = list(final_titles)
     pages_by_title: dict[str, list[int]] = {}
-    for label, indexes in placed:
-        # labels the model did not map (or that were not sent to it) keep their own title
-        title = title_of.get(label.lower(), label_display[label.lower()])
+    for label_index, (label, indexes) in enumerate(placed):
+        # not assigned by the model: an identically named final section, or its own title (which lands in Optional
+        # when there is no room left for another section, see `apply_curation`)
+        title = final_titles[assigned[label_index]] if label_index in assigned else by_lower.get(label.lower(), label)
         if title not in order:
             order.append(title)
         pages_by_title.setdefault(title, []).extend(indexes)
+    unassigned = len(placed) - len(assigned)
+    if unassigned:
+        logger.info(f'AI curation: {unassigned} of {len(placed)} proposed sections were not assigned by the model.')
 
     def text(key: str) -> str | None:
         value = merge_result.get(key)
