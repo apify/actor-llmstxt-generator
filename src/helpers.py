@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import html
 import logging
+import re
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
@@ -13,6 +15,17 @@ if TYPE_CHECKING:
 # not using Actor.log because pytest then throws a warning
 # about non existent event loop
 logger = logging.getLogger('apify')
+
+# Real SEO meta descriptions are ~50-160 characters (search engines truncate around 160).
+# Anything much longer is almost certainly a dumped document, not a page summary.
+DESCRIPTION_MAX_LENGTH = 300
+
+_HTML_TAG_RE = re.compile(r'</?[a-zA-Z][^<>]*>')
+_MD_LINK_RE = re.compile(r'\[([^\[\]]*)\]\([^()\s]*\)')
+_WHITESPACE_RE = re.compile(r'\s+')
+_PARAGRAPH_BREAK_RE = re.compile(r'\n[ \t]*\n')
+# Markdown block markers at the start of a line: blockquote, heading, list item, numbered item, code fence, table row
+_MD_BLOCK_LINE_RE = re.compile(r'^[ \t]*(?:>|#{1,6}(?:[ \t]|$)|[-*+][ \t]|\d{1,2}[.)][ \t]|```|~~~|\|)', re.MULTILINE)
 
 
 def get_section_dir_title(section_dir: str, path_titles: dict[str, str]) -> str:
@@ -96,16 +109,53 @@ def get_hostname_path_string_from_url(url: str) -> str:
     return f'{parsed_url.hostname}{parsed_url.path}'
 
 
-def is_description_suitable(description: str | None) -> bool:
-    """Checks if the description is suitable for the `llms.txt` file.
+def clean_description(description: str | None) -> str | None:
+    r"""Normalizes a raw meta description into a single plain-text line.
 
-    Currently only cheks if the description does not contain newlines.
-    This was created because of the https://docs.apify.com/api/v2.
-    The page that contains whole MD document in the meta tag description.
+    Unescapes HTML entities, strips HTML tags (some generators leak markup such as
+    `<span id=...></span>` into the meta content), replaces complete Markdown links
+    with their text and collapses all whitespace (including `\r\n`) into single spaces.
+    Returns `None` if nothing is left.
     """
     if description is None:
+        return None
+    text = html.unescape(description)
+    text = _HTML_TAG_RE.sub('', text)
+    text = _MD_LINK_RE.sub(r'\1', text)
+    text = _WHITESPACE_RE.sub(' ', text).strip()
+    return text or None
+
+
+def is_description_suitable(description: str | None) -> bool:
+    """Checks if the raw meta description is a real page summary suitable for the `llms.txt` file.
+
+    Some sites put a whole Markdown document (or a truncated piece of one) into
+    `<meta name="description">`, e.g. https://docs.apify.com/api/v2. Such a description is rejected when:
+    - it spans multiple paragraphs,
+    - any of its lines starts with a Markdown block marker (blockquote, heading, list item, code fence, table row),
+    - after cleaning it is longer than `DESCRIPTION_MAX_LENGTH`,
+    - after cleaning it still contains Markdown link syntax or unbalanced brackets (e.g. a link cut in half).
+
+    A single line break inside otherwise normal text is fine, it is collapsed by `clean_description`.
+    """
+    if description is None or not description.strip():
         return False
-    return '\n' not in description
+
+    normalized = description.replace('\r\n', '\n').replace('\r', '\n')
+    if _PARAGRAPH_BREAK_RE.search(normalized):
+        return False
+    if _MD_BLOCK_LINE_RE.search(normalized):
+        return False
+
+    cleaned = clean_description(normalized)
+    if cleaned is None or len(cleaned) > DESCRIPTION_MAX_LENGTH:
+        return False
+    return '](' not in cleaned and cleaned.count('[') == cleaned.count(']')
+
+
+def get_suitable_description(description: str | None) -> str | None:
+    """Returns the cleaned description if it is suitable for the `llms.txt` file, otherwise `None`."""
+    return clean_description(description) if is_description_suitable(description) else None
 
 
 def get_description_from_html(html: str) -> None | str:

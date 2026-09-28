@@ -1,7 +1,7 @@
 from apify import ProxyConfiguration
 from crawlee.crawlers import BeautifulSoupCrawler, BeautifulSoupCrawlingContext
 
-from src.helpers import get_description_from_soup, get_h1_from_soup, is_description_suitable
+from src.helpers import get_description_from_soup, get_h1_from_soup, get_suitable_description
 from src.mytypes import CrawledPage
 
 STATUS_CODE_OK = 200
@@ -28,11 +28,10 @@ async def run_crawler(
         if not title:
             context.log.warning(f'No title found for {context.request.url}')
             return
-        description = get_description_from_soup(context.soup)
         data: CrawledPage = {
             'url': context.request.url,
             'title': title,
-            'description': description if is_description_suitable(description) else None,
+            'description': get_suitable_description(get_description_from_soup(context.soup)),
         }
         results.append(data)
 
