@@ -174,7 +174,7 @@ async def test_curate_with_ai_scales_to_a_thousand_pages(monkeypatch: pytest.Mon
     curated = await curate_with_ai(_DATA, entries, start_url='https://example.com', token='tok', link_to_markdown=False)
 
     batch_calls = [c for c in calls if c.startswith('batch ')]
-    assert len(batch_calls) == 7  # ceil(950 main pages / BATCH_SIZE=150)
+    assert len(batch_calls) == -(-950 // BATCH_SIZE)  # ceil(950 main pages / BATCH_SIZE)
     assert calls.count('section merge') == 1
     assert [section['title'] for section in curated['sections']] == ['Docs', 'Optional']
     assert len(curated['sections'][0]['links']) == 950  # everything the model placed
@@ -184,17 +184,22 @@ async def test_curate_with_ai_scales_to_a_thousand_pages(monkeypatch: pytest.Mon
 
 async def test_curate_in_batches_merges_equivalent_section_labels(monkeypatch: pytest.MonkeyPatch) -> None:
     """Section titles that differ only by batch phrasing are merged into one canonical section."""
-    entries = _synthetic_entries(200)  # forces exactly 2 batches: 150 + 50
+    remainder = max(1, BATCH_SIZE // 2)
+    entries = _synthetic_entries(BATCH_SIZE + remainder)  # forces exactly 2 batches: BATCH_SIZE + remainder
 
     async def fake_call_model(_payload: object, _token: str, _timeout_secs: float, *, log_label: str) -> dict:
         if log_label == 'batch 1/2':
             return {
-                'sections': [{'title': 'Getting Started', 'pages': list(range(150))}],
+                'sections': [{'title': 'Getting Started', 'pages': list(range(BATCH_SIZE))}],
                 'optional': [],
                 'exclude': [],
             }
         if log_label == 'batch 2/2':
-            return {'sections': [{'title': 'getting started', 'pages': list(range(50))}], 'optional': [], 'exclude': []}
+            return {
+                'sections': [{'title': 'getting started', 'pages': list(range(remainder))}],
+                'optional': [],
+                'exclude': [],
+            }
         if log_label == 'section merge':
             return {
                 'title': 'Site',
@@ -208,4 +213,4 @@ async def test_curate_in_batches_merges_equivalent_section_labels(monkeypatch: p
     monkeypatch.setattr('src.curation._call_model', fake_call_model)
     curation = await _curate_in_batches(_DATA, entries, 'https://example.com', 'tok', 'model', 30)
 
-    assert curation['sections'] == [{'title': 'Getting started', 'pages': list(range(200))}]
+    assert curation['sections'] == [{'title': 'Getting started', 'pages': list(range(len(entries)))}]

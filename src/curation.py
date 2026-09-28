@@ -38,17 +38,19 @@ DEFAULT_MODEL = 'qwen/qwen3-30b-a3b-instruct-2507'
 MAX_RESPONSE_TOKENS = 2000
 MAX_SECTIONS = 10
 # Number of pages placed per model call once there are too many for one request (see `_curate_in_batches`).
-# Each page costs roughly 2 completion tokens (its index as a JSON array element), plus a few hundred tokens
-# of fixed overhead for the JSON scaffolding and up to MAX_SECTIONS section title strings. A full batch at
-# this size is therefore roughly 450-500 completion tokens -- well under MAX_RESPONSE_TOKENS even if the
-# model is less compact than expected, leaving a large safety margin against truncation. Batches run
-# concurrently, so wall-clock time does not scale with the number of pages.
-BATCH_SIZE = 150
+# A naive "~2 tokens per index" estimate is NOT safe in practice: measured live against 604 real pages at
+# BATCH_SIZE=150, the model used 1067-2000+ completion tokens per batch -- one batch was truncated exactly at
+# the MAX_RESPONSE_TOKENS cap, because models don't reliably emit compact JSON even when asked to, and because
+# section count/title verbosity varies with page content, not just page count. At BATCH_SIZE=60, re-verified
+# live against 599 real pages (10 concurrent batches), completion tokens per batch were 197-404 -- a 5-10x
+# margin below the cap. Batches run concurrently, so wall-clock time does not scale with the number of pages.
+BATCH_SIZE = 60
 _JSON_FENCE_RE = re.compile(r'^```(?:json)?\s*|\s*```$')
 
 SYSTEM_PROMPT = """You curate llms.txt files (https://llmstxt.org): short Markdown indexes that help AI coding \
 agents find the most useful pages of a website. Use only the information you are given, never invent facts. \
-Answer with a single JSON object and nothing else."""
+Answer with a single minified JSON object and nothing else: no markdown code fences, no whitespace or line \
+breaks other than the single spaces required inside strings."""
 
 USER_PROMPT = """Website: {site_title}
 Start URL: {start_url}
@@ -87,7 +89,8 @@ Every index from 0 to {max_index} must appear exactly once in "sections", "optio
 MERGE_SYSTEM_PROMPT = """You are finishing an llms.txt file (https://llmstxt.org) whose pages were grouped in \
 separate batches because there were too many to place in one request. Merge the section names proposed for \
 each batch into one consistent, ordered list, and write the file's title and summary. Use only the \
-information you are given, never invent facts. Answer with a single JSON object and nothing else."""
+information you are given, never invent facts. Answer with a single minified JSON object and nothing else: \
+no markdown code fences, no whitespace or line breaks other than the single spaces required inside strings."""
 
 MERGE_USER_PROMPT = """Website: {site_title}
 Start URL: {start_url}
