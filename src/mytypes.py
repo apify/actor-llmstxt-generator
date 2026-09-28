@@ -44,8 +44,9 @@ class CrawledPage(TypedDict):
     description: str | None
     # URL of the Markdown version of the page advertised via <link rel="alternate" type="text/markdown">
     markdown_url: str | None
-    # Markdown content of the page, only collected when generating `llms-full.txt`
-    markdown: str | None
+    # Markdown content of the page compressed with `src.markdown.pack_markdown`, only collected when generating
+    # `llms-full.txt`
+    markdown: bytes | None
     # normalized keys of in-scope links found on the page, in document order
     outlinks: list[str]
     depth: int
@@ -63,3 +64,5 @@ class CrawlResult:
     start_page_link_count: int = 0
     # URL of an `llms.txt` the site already publishes, if any
     existing_llms_txt_url: str | None = None
+    # the crawl was stopped before the run timeout, so pages that would fit into the page budget may be missing
+    deadline_reached: bool = False

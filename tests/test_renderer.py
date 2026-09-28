@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from src.builder import PageEntry
+from src.markdown import pack_markdown
 from src.renderer import escape_link_text, escape_link_url, render_llms_full_txt, render_llms_txt
 
 if TYPE_CHECKING:
@@ -135,7 +136,7 @@ def _page(url: str, title: str, markdown: str | None) -> CrawledPage:
         'html_title': None,
         'description': None,
         'markdown_url': None,
-        'markdown': markdown,
+        'markdown': pack_markdown(markdown),
         'outlinks': [],
         'depth': 1,
     }
@@ -172,4 +173,21 @@ Source: https://e.com/c
 Content C
 """
 
-    assert render_llms_full_txt(data, '# Example\n\nStart content', entries) == expected_output
+    content, omitted = render_llms_full_txt(data, '# Example\n\nStart content', entries)
+    assert content.decode() == expected_output
+    assert omitted == 0
+
+
+def test_render_llms_full_txt_leaves_out_pages_over_the_size_limit() -> None:
+    data: LLMSData = {'title': 'Example', 'description': None, 'details': None, 'sections': []}
+    entries = [
+        PageEntry(_page(f'https://e.com/{i}', f'Page {i}', 'x' * 1000), f'Page {i}', None, i, '/', optional=False)
+        for i in range(10)
+    ]
+    content, omitted = render_llms_full_txt(data, None, entries, max_bytes=3500)
+    assert omitted == 7
+    assert len(content) < 3500 + 200
+    text = content.decode()
+    assert '# Page 2' in text
+    assert '# Page 3' not in text
+    assert text.endswith('7 more pages were left out because this file reached the size limit of 0 MB for this run.\n')

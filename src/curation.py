@@ -10,6 +10,10 @@ concurrent batches for large ones (`_curate_in_batches`, see `BATCH_SIZE`), with
 the section names each batch proposed into one consistent, ordered list and write the file's title/summary.
 Both paths converge on the same `apply_curation` call, so they share the same validation, deduplication and
 fallback-to-Optional behavior.
+
+Time is bounded by the `deadline` passed by the caller (the run timeout minus the time needed to save the output):
+every call's timeout is capped by the time left, a call is not started when too little is left, and the whole
+step is cancelled at the deadline, so a slow model degrades to the non-AI structure instead of timing the run out.
 """
 
 from __future__ import annotations
@@ -18,6 +22,8 @@ import asyncio
 import json
 import logging
 import re
+import time
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
@@ -45,6 +51,18 @@ MAX_SECTIONS = 10
 # live against 599 real pages (10 concurrent batches), completion tokens per batch were 197-404 -- a 5-10x
 # margin below the cap. Batches run concurrently, so wall-clock time does not scale with the number of pages.
 BATCH_SIZE = 60
+# Batches in flight at once. 10 concurrent batches were verified live; more would risk the proxy's rate limits,
+# and one failed batch fails the whole AI step.
+MAX_CONCURRENT_CALLS = 10
+# Timeout of a single model call, lowered when the run has less time left (see `_Budget`).
+CALL_TIMEOUT_SECS = 120.0
+# A batch whose answer doesn't fit into the response cap is split in halves down to this many pages.
+MIN_SPLIT_PAGES = 8
+# A call is not started with less time left than this, it would most likely not finish anyway.
+MIN_CALL_SECS = 10.0
+# Section titles sent to the merge call. The merge response lists each of them by index (1-3 tokens each), so even
+# this many stay far below the response cap. Labels beyond it (the ones with the fewest pages) keep their own title.
+MAX_MERGE_LABELS = 150
 _JSON_FENCE_RE = re.compile(r'^```(?:json)?\s*|\s*```$')
 
 SYSTEM_PROMPT = """You curate llms.txt files (https://llmstxt.org): short Markdown indexes that help AI coding \
@@ -96,18 +114,18 @@ MERGE_USER_PROMPT = """Website: {site_title}
 Start URL: {start_url}
 Site description: {site_description}
 
-Section titles proposed for different batches of this site's pages, with how many pages ended up in each \
-(the same real section may have been named slightly differently in different batches):
+Section titles proposed for different batches of this site's pages (index | title | number of pages). The same \
+real section may have been named slightly differently in different batches:
 {labels}
 
 Return JSON with these keys:
 - "title": the name of the project or product the pages document, short, without taglines (e.g. "Apify CLI").
 - "summary": one factual sentence (max 200 characters) saying what it is and what the pages cover. No marketing.
 - "details": 1-3 short factual sentences with context an AI agent needs to use these pages well, or "".
-- "sections": the final ordered list of at most {max_sections} canonical section titles, merging equivalent \
-proposed titles (e.g. "Getting Started" and "Quickstart" become one), most important first.
-- "mapping": a JSON object mapping EVERY proposed title listed above (use its exact text as the key) to one \
-of the "sections" titles."""
+- "sections": the final list of at most {max_sections} sections, most important first. Each is \
+{{"title": str, "labels": [indexes of the proposed titles merged into it]}}. Merge equivalent proposed titles \
+(e.g. "Getting Started" and "Quickstart" become one section).
+Every proposed title index from 0 to {max_index} must appear in exactly one section."""
 
 
 def _page_lines(entries: list[PageEntry]) -> str:
@@ -142,15 +160,15 @@ def _build_batch_prompt(data: LLMSData, chunk: list[PageEntry], part: int, total
     )
 
 
-def _build_merge_prompt(data: LLMSData, start_url: str, label_counts: dict[str, int]) -> str:
+def _build_merge_prompt(data: LLMSData, start_url: str, labels: list[tuple[str, int]]) -> str:
     """Builds the user prompt for the final call that merges batches' section titles into one list."""
-    labels = '\n'.join(f'- "{label}" ({count} pages)' for label, count in label_counts.items())
     return MERGE_USER_PROMPT.format(
         site_title=data['title'],
         start_url=start_url,
         site_description=data['description'] or '-',
-        labels=labels,
+        labels='\n'.join(f'{index} | {label} | {count}' for index, (label, count) in enumerate(labels)),
         max_sections=MAX_SECTIONS,
+        max_index=len(labels) - 1,
     )
 
 
@@ -244,6 +262,55 @@ def _chat_payload(model: str, user_prompt: str, *, system: str = SYSTEM_PROMPT) 
     }
 
 
+class _TransientError(RuntimeError):
+    """An error worth retrying: rate limiting or a server error of the proxy."""
+
+
+class _UnusableResponseError(ValueError):
+    """The model's answer was cut off at the response token cap or is not valid JSON.
+
+    Retrying the same request would most likely give the same answer at temperature 0, but asking about fewer
+    pages (or section titles) gives the model less to write, see `_curate_in_batches`.
+    """
+
+
+class _Budget:
+    """Time left for the AI step, see the module docstring."""
+
+    def __init__(self, deadline: datetime | None) -> None:
+        self._end = None if deadline is None else time.monotonic() + (deadline - datetime.now(UTC)).total_seconds()
+
+    def remaining(self) -> float | None:
+        return None if self._end is None else self._end - time.monotonic()
+
+    def call_timeout(self) -> float:
+        """Returns the timeout for the next call, raises `TimeoutError` when there is too little time left."""
+        remaining = self.remaining()
+        if remaining is None:
+            return CALL_TIMEOUT_SECS
+        if remaining < MIN_CALL_SECS:
+            raise TimeoutError(f'Only {max(remaining, 0):.0f} s left before the run timeout, skipping the AI call')
+        return min(CALL_TIMEOUT_SECS, remaining)
+
+
+async def _call_with_retry(payload: dict[str, Any], token: str, budget: _Budget, *, log_label: str) -> dict[str, Any]:
+    """Calls the model, retrying once after a rate limit, server or network error when there is time left.
+
+    Invalid or truncated JSON is not retried: at temperature 0 the model would most likely answer the same.
+    """
+    try:
+        return await _call_model(payload, token, budget.call_timeout(), log_label=log_label)
+    except _TransientError as exc:
+        logger.warning(f'AI curation ({log_label}) failed, retrying once: {exc}')
+    except (RuntimeError, ValueError, TypeError, KeyError, TimeoutError):
+        # client errors (bad model ID, no credit, ...), unusable responses and the run deadline
+        raise
+    except Exception as exc:  # network errors and timeouts of the HTTP client
+        logger.warning(f'AI curation ({log_label}) failed, retrying once: {exc}')
+    await asyncio.sleep(2)
+    return await _call_model(payload, token, budget.call_timeout(), log_label=log_label)
+
+
 async def _call_model(payload: dict[str, Any], token: str, timeout_secs: float, *, log_label: str) -> dict[str, Any]:
     """Sends one chat completion request to the OpenRouter proxy and returns the parsed JSON response."""
     async with impit.AsyncClient(timeout=timeout_secs) as client:
@@ -253,30 +320,89 @@ async def _call_model(payload: dict[str, Any], token: str, timeout_secs: float, 
             headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'},
         )
     if response.status_code != 200:  # noqa: PLR2004
-        raise RuntimeError(f'OpenRouter proxy returned HTTP {response.status_code}: {response.text[:500]}')
+        error = _TransientError if response.status_code == 429 or response.status_code >= 500 else RuntimeError  # noqa: PLR2004
+        raise error(f'OpenRouter proxy returned HTTP {response.status_code}: {response.text[:500]}')
     body = json.loads(response.text)
-    content = body['choices'][0]['message']['content']
+    choice = body['choices'][0]
+    content = choice['message']['content'] or ''
     usage = body.get('usage') or {}
+    completion_tokens = usage.get('completion_tokens') or 0
     logger.info(
         f'AI curation ({log_label}) with {payload["model"]}: {usage.get("prompt_tokens")} prompt tokens, '
-        f'{usage.get("completion_tokens")} completion tokens'
+        f'{completion_tokens} completion tokens'
     )
-    return parse_response(content)
+    if completion_tokens > MAX_RESPONSE_TOKENS * 0.6:
+        logger.warning(
+            f'AI curation ({log_label}) used {completion_tokens} of the {MAX_RESPONSE_TOKENS} response tokens, '
+            f'the answer starts with: {content[:300]!r}'
+        )
+    if choice.get('finish_reason') == 'length':
+        raise _UnusableResponseError(f'The answer was cut off at {completion_tokens} tokens')
+    try:
+        return parse_response(content)
+    except (ValueError, TypeError) as exc:
+        raise _UnusableResponseError(f'The answer is not a JSON object ({exc}): {content[:200]!r}') from exc
+
+
+def _concat_placements(
+    first: dict[str, Any], first_count: int, second: dict[str, Any], second_count: int
+) -> dict[str, Any]:
+    """Joins the batch answers for two consecutive halves of a chunk, shifting the second half's page indexes."""
+
+    def sections(answer: dict[str, Any]) -> list[dict[str, Any]]:
+        value = answer.get('sections')
+        return [section for section in value if isinstance(section, dict)] if isinstance(value, list) else []
+
+    def shifted(value: Any) -> list[int]:
+        return [first_count + index for index in _indexes(value, second_count)]
+
+    return {
+        'sections': [
+            *({**section, 'pages': _indexes(section.get('pages'), first_count)} for section in sections(first)),
+            *({**section, 'pages': shifted(section.get('pages'))} for section in sections(second)),
+        ],
+        'optional': _indexes(first.get('optional'), first_count) + shifted(second.get('optional')),
+        'exclude': _indexes(first.get('exclude'), first_count) + shifted(second.get('exclude')),
+    }
 
 
 async def _curate_in_batches(
-    data: LLMSData, main_entries: list[PageEntry], start_url: str, token: str, model: str, timeout_secs: float
+    data: LLMSData,
+    main_entries: list[PageEntry],
+    start_url: str,
+    token: str,
+    model: str,
+    budget: _Budget,
+    batch_size: int = BATCH_SIZE,
 ) -> dict[str, Any]:
     """Places pages in concurrent batches, then merges the section titles each batch proposed into one list."""
-    chunks = [main_entries[i : i + BATCH_SIZE] for i in range(0, len(main_entries), BATCH_SIZE)]
+    chunks = [main_entries[i : i + batch_size] for i in range(0, len(main_entries), batch_size)]
     total = len(chunks)
-    logger.info(f'AI curation: {len(main_entries)} pages split into {total} batches of up to {BATCH_SIZE}.')
+    logger.info(f'AI curation: {len(main_entries)} pages split into {total} batches of up to {batch_size}.')
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_CALLS)
 
-    async def place(part: int, chunk: list[PageEntry]) -> dict[str, Any]:
+    async def place(part: int, chunk: list[PageEntry], label: str) -> dict[str, Any]:
+        """Places a chunk, splitting it in halves while the answer doesn't fit into the response cap."""
         payload = _chat_payload(model, _build_batch_prompt(data, chunk, part + 1, total))
-        return await _call_model(payload, token, timeout_secs, log_label=f'batch {part + 1}/{total}')
+        try:
+            async with semaphore:
+                answer = await _call_with_retry(payload, token, budget, log_label=label)
+            sections = answer.get('sections')
+            # capped per answer, so the halves of a split batch can have up to MAX_SECTIONS each
+            return {**answer, 'sections': sections[:MAX_SECTIONS] if isinstance(sections, list) else []}
+        except _UnusableResponseError as exc:
+            if len(chunk) < 2 * MIN_SPLIT_PAGES:
+                raise
+            logger.warning(f'AI curation ({label}): {exc}. Splitting the batch in two.')
+        half = len(chunk) // 2
+        first, second = await asyncio.gather(
+            place(part, chunk[:half], f'{label}a'), place(part, chunk[half:], f'{label}b')
+        )
+        return _concat_placements(first, half, second, len(chunk) - half)
 
-    batch_results = await asyncio.gather(*(place(part, chunk) for part, chunk in enumerate(chunks)))
+    batch_results = await asyncio.gather(
+        *(place(part, chunk, f'batch {part + 1}/{total}') for part, chunk in enumerate(chunks))
+    )
 
     # (raw section title as this batch phrased it, global page indexes), in encounter order
     placed: list[tuple[str, list[int]]] = []
@@ -289,7 +415,7 @@ async def _curate_in_batches(
         for raw_section in raw_sections if isinstance(raw_sections, list) else []:
             if not isinstance(raw_section, dict) or not isinstance(title := raw_section.get('title'), str):
                 continue
-            if not title.strip():
+            if not title.strip() or title.strip().lower() == OPTIONAL_SECTION_TITLE.lower():
                 continue
             local_indexes = _indexes(raw_section.get('pages'), count)
             if local_indexes:
@@ -301,38 +427,56 @@ async def _curate_in_batches(
     if not placed:
         raise ValueError('Model returned no usable sections in any batch')
 
-    # merge titles that differ only by case/whitespace before asking the model to canonicalize them, so the
-    # merge prompt (and its output) stays small regardless of how many batches there were
-    label_counts: dict[str, int] = {}
+    # merge titles that differ only by case/whitespace before asking the model, keyed by the lowercased title
+    label_pages: dict[str, int] = {}
     label_display: dict[str, str] = {}
     for label, indexes in placed:
-        display = label_display.setdefault(label.lower(), label)
-        label_counts[display] = label_counts.get(display, 0) + len(indexes)
+        label_display.setdefault(label.lower(), label)
+        label_pages[label.lower()] = label_pages.get(label.lower(), 0) + len(indexes)
+    # the biggest labels, in the order they were first proposed (batches follow the navigation order)
+    kept = set(sorted(label_pages, key=lambda key: -label_pages[key])[:MAX_MERGE_LABELS])
+    merge_labels = [key for key in label_display if key in kept]
+    if len(label_pages) > len(merge_labels):
+        logger.info(f'AI curation: merging the {len(merge_labels)} biggest of {len(label_pages)} proposed sections.')
 
-    merge_payload = _chat_payload(model, _build_merge_prompt(data, start_url, label_counts), system=MERGE_SYSTEM_PROMPT)
-    merge_result = await _call_model(merge_payload, token, timeout_secs, log_label='section merge')
+    while True:
+        merge_payload = _chat_payload(
+            model,
+            _build_merge_prompt(data, start_url, [(label_display[key], label_pages[key]) for key in merge_labels]),
+            system=MERGE_SYSTEM_PROMPT,
+        )
+        try:
+            merge_result = await _call_with_retry(merge_payload, token, budget, log_label='section merge')
+            break
+        except _UnusableResponseError as exc:
+            if len(merge_labels) <= MAX_SECTIONS:
+                raise
+            # labels left out keep their own titles, like the ones beyond MAX_MERGE_LABELS
+            kept = set(sorted(merge_labels, key=lambda key: -label_pages[key])[: len(merge_labels) // 2])
+            merge_labels = [key for key in merge_labels if key in kept]
+            logger.warning(f'AI curation (section merge): {exc}. Retrying with the {len(merge_labels)} biggest.')
 
-    raw_mapping = merge_result.get('mapping')
-    mapping = {
-        key.strip().lower(): value.strip()
-        for key, value in (raw_mapping.items() if isinstance(raw_mapping, dict) else [])
-        if isinstance(key, str) and isinstance(value, str) and value.strip()
-    }
-    raw_order = merge_result.get('sections')
-    order = (
-        [title.strip() for title in raw_order if isinstance(title, str) and title.strip()]
-        if isinstance(raw_order, list)
-        else []
-    )
+    # lowercased proposed title -> final section title, in the final order
+    title_of: dict[str, str] = {}
+    order: list[str] = []
+    raw_sections = merge_result.get('sections')
+    for raw_section in raw_sections if isinstance(raw_sections, list) else []:
+        if not isinstance(raw_section, dict) or not isinstance(title := raw_section.get('title'), str):
+            continue
+        if not title.strip():
+            continue
+        for index in _indexes(raw_section.get('labels'), len(merge_labels)):
+            title_of.setdefault(merge_labels[index], title.strip())
+        if title.strip() not in order:
+            order.append(title.strip())
 
     pages_by_title: dict[str, list[int]] = {}
     for label, indexes in placed:
-        title = mapping.get(label.lower(), label)
-        if title not in pages_by_title:
-            pages_by_title[title] = []
-            if title not in order:
-                order.append(title)
-        pages_by_title[title].extend(indexes)
+        # labels the model did not map (or that were not sent to it) keep their own title
+        title = title_of.get(label.lower(), label_display[label.lower()])
+        if title not in order:
+            order.append(title)
+        pages_by_title.setdefault(title, []).extend(indexes)
 
     def text(key: str) -> str | None:
         value = merge_result.get(key)
@@ -356,24 +500,48 @@ async def curate_with_ai(
     token: str,
     model: str = DEFAULT_MODEL,
     link_to_markdown: bool = True,
-    timeout_secs: float = 120,
+    deadline: datetime | None = None,
 ) -> LLMSData:
     """Asks the model to curate the `llms.txt` structure and returns the curated data.
 
     Pages already flagged as optional by URL heuristics are excluded from the request and appended to the
     Optional section directly (see the module docstring). The rest are placed in one call for small/medium
     sites, or split into concurrent batches with a final merge call for large ones (`BATCH_SIZE`).
+
+    Raises `TimeoutError` when the `deadline` is reached before the curation finishes.
     """
     main_entries = [entry for entry in entries if not entry.optional]
     preplaced = [entry for entry in entries if entry.optional]
     if not main_entries:
         raise ValueError('No pages left to curate: every page was heuristically flagged as optional')
 
-    if len(main_entries) <= BATCH_SIZE:
-        payload = _chat_payload(model, build_prompt(data, main_entries, start_url))
-        curation = await _call_model(payload, token, timeout_secs, log_label='single call')
-    else:
-        curation = await _curate_in_batches(data, main_entries, start_url, token, model, timeout_secs)
+    budget = _Budget(deadline)
+    remaining = budget.remaining()
+    async with asyncio.timeout(None if remaining is None else max(remaining, 0.0)):
+        curation = None
+        if len(main_entries) <= BATCH_SIZE:
+            payload = _chat_payload(model, build_prompt(data, main_entries, start_url))
+            try:
+                curation = await _call_with_retry(payload, token, budget, log_label='single call')
+            except _UnusableResponseError as exc:
+                if len(main_entries) < 2 * MIN_SPLIT_PAGES:
+                    raise
+                logger.warning(f'AI curation (single call): {exc}. Retrying in two batches.')
+        if curation is None:
+            batch_size = BATCH_SIZE if len(main_entries) > BATCH_SIZE else -(-len(main_entries) // 2)
+            curation = await _curate_in_batches(data, main_entries, start_url, token, model, budget, batch_size)
 
     curated = apply_curation(data, main_entries, curation, link_to_markdown=link_to_markdown)
     return _add_preplaced_optional(curated, preplaced, link_to_markdown=link_to_markdown)
+
+
+def estimate_ai_seconds(page_count: int) -> float:
+    """Rough wall-clock time the AI step needs for this many pages, used to reserve time for it in the run.
+
+    One call usually takes 5-30 s; batches run `MAX_CONCURRENT_CALLS` at a time and are followed by the merge call.
+    """
+    batches = -(-page_count // BATCH_SIZE)
+    if batches <= 1:
+        return 90.0
+    rounds = -(-batches // MAX_CONCURRENT_CALLS)
+    return 60.0 * rounds + 60.0
