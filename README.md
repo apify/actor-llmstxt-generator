@@ -25,9 +25,10 @@ Most of the value today is in developer tooling. Coding agents and AI IDEs such 
 
 ## How to use it
 
-1. Enter the **Start URL**, usually the root of the documentation, such as `https://docs.apify.com/cli/docs`.
-2. Optionally change **Max crawl depth** and **Max crawl pages**. With the default depth of 1, the Actor crawls the pages linked from the start page, which on most docs sites is the whole sidebar.
-3. Click **Start**. When the run finishes, download `llms.txt` and `llms-full.txt` from the **Output** tab.
+1. Enter the **Website address**, usually the root of the documentation, such as `https://docs.apify.com/cli/docs`.
+2. Click **Start**. When the run finishes, download `llms.txt` and `llms-full.txt` from the **Output** tab.
+
+Everything else is under **Advanced settings** and has defaults that work for most documentation sites: up to 100 pages, the pages linked from the start page (on most docs sites, the whole sidebar), `llms-full.txt` on, AI off.
 
 ### Input example
 
@@ -35,7 +36,7 @@ Most of the value today is in developer tooling. Coding agents and AI IDEs such 
 {
   "startUrl": "https://docs.apify.com/cli/docs",
   "maxCrawlDepth": 1,
-  "maxCrawlPages": 50,
+  "maxCrawlPages": 100,
   "excludeUrlGlobs": ["*/docs/1.*"],
   "generateLlmsFullTxt": true,
   "aiCuration": false
@@ -67,11 +68,12 @@ The run also saves a dataset item with links to both files, the number of crawle
 
 ## AI curation
 
-Without AI, sections follow the site's URL structure. That works well for most documentation, but a large site can end up with one long section. With **Curate with AI** turned on, the Actor sends the page titles, paths and descriptions to an LLM through the [OpenRouter Actor](https://apify.com/apify/openrouter). The LLM returns the section structure, the summary and the list of secondary pages. It only rearranges the pages the Actor found and cannot add new links. Pages already recognized as secondary by URL alone (changelogs, blog posts, old documentation versions, ...) are never sent to the model; they go straight to `Optional`.
+Without AI, sections follow the site's URL structure. That works well for most documentation, but a large site can end up with one long section. With **Organize with AI** turned on, the Actor sends the page titles, paths and descriptions to an LLM through the [OpenRouter Actor](https://apify.com/apify/openrouter). The LLM returns the section structure, the summary and the list of secondary pages. It only rearranges the pages the Actor found and cannot add new links. Pages already recognized as secondary by URL alone (changelogs, blog posts, old documentation versions, ...) are never sent to the model; they go straight to `Optional`.
 
-- **Scales to large sites.** The OpenRouter proxy caps every response at 2,048 tokens, so a single request can't safely place thousands of pages at once. Above 150 pages, the Actor splits them into concurrent batches, then makes one small extra call to merge the section names each batch proposed into one consistent list. Small and medium sites still use a single call.
-- **Cost:** The LLM usage is billed to your Apify account at OpenRouter prices, plus a 10x markup for Apify's free plan (paid plans pay the raw OpenRouter price). For about 50 pages, this is usually a fraction of a cent on a paid plan; large, batched sites cost more roughly in proportion to their page count.
-- **Model:** The default is `qwen/qwen3-30b-a3b-instruct-2507`, an open-weight (Apache 2.0) model chosen for cheap, reliable, non-reasoning JSON output. You can use any [OpenRouter model ID](https://openrouter.ai/models) — prefer instruct/non-reasoning models, since a reasoning model can spend the 2,048-token response budget on hidden reasoning before writing the JSON and get cut off.
+- **Scales to large sites.** The OpenRouter proxy caps every response at 2,048 tokens, so a single request can't safely place thousands of pages at once. Above 60 pages, the Actor splits them into batches (10 at a time), then makes one small extra call to merge the section names each batch proposed into one consistent list. A batch whose answer still doesn't fit is split in half and retried. Small sites use a single call.
+- **Cost:** The LLM usage is billed to your Apify account at OpenRouter prices, plus a 10x markup for Apify's free plan (paid plans pay the raw OpenRouter price). With the default model it's about $0.001 per 100 pages on a paid plan (measured: ~1,300 pages cost under $0.01), so even the 5,000-page maximum stays well under $0.10.
+- **Model:** The default is `qwen/qwen3-30b-a3b-instruct-2507`, an open-weight (Apache 2.0) model chosen for cheap, reliable, non-reasoning JSON output. You can also pick `qwen/qwen3-235b-a22b-2507` or `openai/gpt-4.1-mini` (about 4x the price). The list is limited to tested non-reasoning models: a reasoning model can spend the 2,048-token response budget on hidden reasoning before writing the JSON, and an expensive model could turn a large site into a surprising bill.
+- **Time limit:** The AI step gets its share of the run time and never pushes the run past its timeout. If it doesn't finish in time, the Actor saves the file organized by URL paths instead.
 - **Fallback:** If any AI call fails, or its response doesn't parse, the Actor keeps the structure based on URL paths, so you still get a file.
 
 AI curation works only when the Actor runs on the Apify platform.
@@ -79,13 +81,16 @@ AI curation works only when the Actor runs on the Apify platform.
 ## Limitations
 
 - **No JavaScript rendering.** The Actor downloads plain HTML and doesn't run a browser, which keeps it fast and cheap. Sites rendered fully in the browser, such as Docsify sites, have no links in their HTML. On those sites the run fails and explains why, instead of producing an empty file.
+- **Large sites take a while.** Runs of up to 300 pages use 256 MB of memory, larger crawls automatically get more (1 GB up to 1,500 pages, 4 GB above), because on Apify more memory also means more CPU. Measured speeds: 256 MB crawls about 10-40 pages a minute (heavy pages such as FastAPI's docs are the slow end), 4 GB about 120-220 pages a minute (1,731 pages of docs.apify.com in 8 minutes). The maximum is 5,000 pages. You can always set the memory yourself in the run options.
+- **The run always finishes with a result.** Close to the run timeout, the Actor stops crawling and saves what it has, and the status message says the crawl was cut short. Increase the timeout (or the memory) to crawl more.
+- **`llms-full.txt` has a size limit per run.** It may use up to 15% of the run's memory (about 38 MB at 256 MB). Pages beyond that are left out of `llms-full.txt` with a note at the end of the file; `llms.txt` still lists them. Run with more memory to include them.
 - **Descriptions come from the site.** Link descriptions are the pages' meta descriptions. Pages without a meta description get a title only.
 - **Treat the output as a first draft.** A good llms.txt is short and curated. Review the generated file, remove what your users don't need, and add a sentence or two of context before you publish it at `https://your-site.com/llms.txt`.
 
 ## Tips
 
 - **Start from the docs root, not the marketing homepage.** Documentation pages have better titles and descriptions.
-- **Keep the default page limit.** 50 pages is usually enough for a useful index. Raise it for large sites, and use `excludeUrlGlobs` to skip old versions, translations or generated API pages.
+- **Keep the default page limit.** 100 pages is usually enough for a useful index. Raise it for large sites, and use **Skip pages** (`excludeUrlGlobs`) to leave out old versions, translations or generated API pages.
 - **Enable Apify Proxy only when you need it.** Most documentation sites work without a proxy, and crawling without one is faster. Enable **Apify Proxy** in the input if the site blocks the crawler.
 
 ## Resources

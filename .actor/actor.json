@@ -10,5 +10,6 @@
   "storages": {
     "dataset": "./dataset_schema.json"
   },
-  "dockerfile": "./Dockerfile"
+  "dockerfile": "./Dockerfile",
+  "defaultMemoryMbytes": "pages = get(input, 'maxCrawlPages', 100); pages > 1500 ? 4096 : (pages > 300 ? 1024 : 256)"
 }
